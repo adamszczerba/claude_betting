@@ -1,1 +1,2 @@
 match time 90+10 is readed as 10
+add row to store additional info like 'suspended'
