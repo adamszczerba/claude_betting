@@ -85,7 +85,9 @@ def _csv_path(output_dir: str, team1: str, team2: str,
         f"{_safe_filename(tournament)}_"
         f"{BOOKMAKER_TAG}_{date}.csv"
     )
-    return os.path.join(output_dir, fname)
+    day_dir = os.path.join(output_dir, str(date))
+    os.makedirs(day_dir, exist_ok=True)
+    return os.path.join(day_dir, fname)
 
 
 CSV_COLUMNS = [
@@ -353,7 +355,7 @@ class MatchCSVWriter:
 # ---------------------------------------------------------------------------
 
 def run(
-    output_dir: str = "v2/db",
+    output_dir: str = "match_database/coincasino",
     interval: float = DEFAULT_POLL_INTERVAL,
 ) -> None:
     client = BetbyClient()
@@ -403,8 +405,8 @@ def main():
     )
     parser.add_argument(
         "-o", "--output-dir",
-        default="v2/db",
-        help="Directory for CSV files (default: v2/db)",
+        default="match_database/coincasino",
+        help="Directory for CSV files (default: match_database/coincasino)",
     )
     parser.add_argument(
         "-i", "--interval",

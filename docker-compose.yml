@@ -1,0 +1,49 @@
+# Each scraper runs in its own isolated container with its own WireGuard VPN.
+# The host machine's networking is NOT affected — all VPN tunnels live inside
+# the container network namespace only.
+
+services:
+  # ───────────────────────────────────────────────────────────────────────
+  # CoinCasino scraper  (API-based, lightweight)
+  # VPN: ProtonVPN Poland  (warszawa1_protonvpn-PL-88)
+  # ───────────────────────────────────────────────────────────────────────
+  coincasino:
+    build:
+      context: .
+      dockerfile: docker/coincasino/Dockerfile
+    container_name: scraper-coincasino
+    cap_add:
+      - NET_ADMIN          # required for wg-quick / WireGuard
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1   # needed by WireGuard
+      - net.ipv6.conf.all.disable_ipv6=0     # allow IPv6 in tunnel
+    volumes:
+      # Persist scraped CSVs on the host: match_database/coincasino/<date>/
+      - ./match_database/coincasino:/app/db
+      # Mount VPN config (swap configs without rebuilding)
+      - ./vpns/coincasino/warszawa1_protonvpn-PL-88.conf:/etc/wireguard/wg0.conf:ro
+    restart: unless-stopped
+
+  # ───────────────────────────────────────────────────────────────────────
+  # Betfair scraper  (Selenium + headless Chrome)
+  # VPN: ProtonVPN UK  (manchester1_protonvpn-UK-232)
+  # ───────────────────────────────────────────────────────────────────────
+  betfair:
+    build:
+      context: .
+      dockerfile: docker/betfair/Dockerfile
+    container_name: scraper-betfair
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv6.conf.all.disable_ipv6=0
+    volumes:
+      # Persist scraped CSVs on the host: match_database/betfair/<date>/
+      - ./match_database/betfair:/app/db
+      # Mount VPN config
+      - ./vpns/betfair/manchester1_protonvpn-UK-232.conf:/etc/wireguard/wg0.conf:ro
+    # Chrome needs more shared memory
+    shm_size: "2g"
+    restart: unless-stopped
+
