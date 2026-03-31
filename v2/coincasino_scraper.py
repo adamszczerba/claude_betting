@@ -46,13 +46,18 @@ MARKET_TOTAL = "18" # outcomes: 12=over, 13=under  (specifier: total=N)
 STATUS_LABELS = {
     6: "1H",       # 1st half
     7: "2H",       # 2nd half
+    22: "PRE",     # pre-match / not started
     31: "HT",      # halftime
     32: "AET",     # awaiting extra time
     33: "ETHT",    # extra-time halftime
     41: "ET1",     # 1st extra-time half
     42: "ET2",     # 2nd extra-time half
     50: "PEN",     # penalties
+    100: "FT",     # full time / ended
 }
+
+# Status codes where the match clock is actively running
+_PLAYING_STATUSES = {6, 7, 41, 42}   # 1H, 2H, ET1, ET2
 
 HEADERS = {
     "User-Agent": (
@@ -122,7 +127,7 @@ def _append_row(path: str, row: list) -> None:
 # Clock computation
 # ---------------------------------------------------------------------------
 
-def _compute_match_time(clock: dict) -> str:
+def _compute_match_time(clock: dict, match_status_code: int | None = None) -> str:
     """
     Return a human-readable match minute string like "67:23".
 
@@ -131,17 +136,27 @@ def _compute_match_time(clock: dict) -> str:
       - stopped     : bool – whether the clock is paused (e.g. halftime)
       - timestamp   : unix-ts (seconds if <=12 digits, ms if 13 digits)
 
-    When the clock is running (stopped=false) we add the elapsed wall-clock
-    time since `timestamp` to get the *current* match minute.
+    The Betby API frequently reports ``stopped=True`` even during active
+    play, updating the snapshot only every ~30 s.  To get a continuous
+    match clock we *always* add elapsed wall-clock time when the match is
+    in a playing state (1H, 2H, ET1, ET2), regardless of the ``stopped``
+    flag.  For genuinely paused states (HT, AET, etc.) we return the raw
+    value.
     """
     raw = clock.get("match_time", "")
     if not raw:
         return ""
 
-    stopped = clock.get("stopped", True)   # default to stopped if absent
     ts = clock.get("timestamp")
 
-    if stopped or ts is None:
+    # Decide whether to extrapolate the clock.
+    # 1) If the API says stopped AND the match is NOT in a playing state
+    #    → clock is truly frozen (halftime, pre-match, etc.)
+    # 2) Otherwise (clock running, or match in a playing state) → compute.
+    stopped = clock.get("stopped", True)
+    is_playing = match_status_code in _PLAYING_STATUSES
+
+    if ts is None or (stopped and not is_playing):
         return raw  # clock frozen -> return as-is
 
     # normalise timestamp to seconds
@@ -256,9 +271,9 @@ def parse_soccer_events(snapshot: dict) -> List[dict]:
         # -- match time (computed from running clock) --------------------
         state = ev.get("state", {})
         clock = state.get("clock", {})
-        match_time = _compute_match_time(clock)
-
         match_status_code = state.get("match_status")
+        match_time = _compute_match_time(clock, match_status_code)
+
         match_status = STATUS_LABELS.get(match_status_code,
                                           str(match_status_code) if match_status_code else "")
 
