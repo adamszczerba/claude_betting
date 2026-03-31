@@ -28,7 +28,7 @@ WORKDIR /app
 
 # Copy scraper code
 COPY v2_betfair/betfair_scraper.py /app/betfair_scraper.py
-COPY v2/sync_clock.py /app/sync_clock.py
+COPY v2_coincasino/sync_clock.py /app/sync_clock.py
 
 # Copy VPN config
 COPY vpns/betfair/*.conf /etc/wireguard/wg0.conf

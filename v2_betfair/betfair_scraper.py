@@ -9,7 +9,7 @@ URL: https://www.betfair.com/betting/inplay/all/i-696e706c6179
 Each live match gets its own CSV file:
     {team1}_vs_{team2}_{tournament}_bf_{date}.csv
 
-The CSV schema matches the v2/coincasino_scraper.py format so that
+The CSV schema matches the v2_coincasino/coincasino_scraper.py format so that
 downstream analysis can treat all bookmaker data uniformly.
 
 Usage:
@@ -26,20 +26,19 @@ import os
 import re
 import sys
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import StaleElementReferenceException
-from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-# sync_clock lives in v2/ locally, or same dir in Docker — make it importable
+# sync_clock lives in v2_coincasino/ locally, or same dir in Docker — make it importable
 _here = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, _here)                                       # Docker: /app
-sys.path.insert(0, os.path.join(_here, "..", "v2"))              # local dev
+sys.path.insert(0, _here)                                               # Docker: /app
+sys.path.insert(0, os.path.join(_here, "..", "v2_coincasino"))          # local dev
 from sync_clock import sleep_until_next_tick  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -164,42 +163,93 @@ SEL_EXTRA_TIME      = "[class*=extraTime]"         # added time div
 SEL_ODD_LABEL       = "[class*=labelTwoLines]"     # odds labels
 
 
-def _find_league_for_coupon(coupon: WebElement, driver: WebElement) -> str:
-    """
-    Walk backward through siblings to find the competition header
-    that precedes this coupon container.
 
-    The page structure is:
-        <div>  <!-- competitionHeader: "Brazilian Serie A" -->
-        <div>  <!-- wrapper around couponContainer -->
-        <div>  <!-- wrapper around couponContainer -->
-        <div>  <!-- competitionHeader: "Chilean Primera B" -->
-        <div>  <!-- wrapper around couponContainer -->
-        ...
-    """
-    # Each coupon is wrapped in a parent div that is a direct child
-    # of the couponListContainer. We find that parent, then walk
-    # backward through preceding siblings.
-    try:
-        # coupon's parent div
-        wrapper = coupon.find_element(By.XPATH, "./..")
-        # Walk backward through preceding siblings
-        prev_siblings = wrapper.find_elements(
-            By.XPATH, "./preceding-sibling::div"
-        )
-        # prev_siblings are returned in document order (first = earliest),
-        # so we iterate in reverse to find the nearest competition header
-        for sib in reversed(prev_siblings):
-            headers = sib.find_elements(By.CSS_SELECTOR, SEL_COMPETITION)
-            if headers:
-                title_els = headers[0].find_elements(
-                    By.CSS_SELECTOR, SEL_COMP_TITLE
-                )
-                if title_els:
-                    return title_els[0].text.strip()
-    except Exception:
-        pass
-    return ""
+# ---------------------------------------------------------------------------
+# JavaScript snippet that extracts ALL match data in a single call.
+# This avoids hundreds of Selenium WebDriver roundtrips (~30 ms each)
+# that made the old per-element approach take 9+ seconds for 50 matches.
+# ---------------------------------------------------------------------------
+_JS_EXTRACT_ALL = """
+var results = [];
+var listContainer = document.querySelector("[class*=couponListContainer]");
+if (!listContainer) return {football: false, matches: []};
+
+// Check if "Football" is anywhere on the page (fast innerText check)
+if (document.body.innerText.indexOf("Football") === -1)
+    return {football: false, matches: []};
+
+// Walk direct children of the list container to track current league
+var currentLeague = "";
+var children = listContainer.children;
+for (var i = 0; i < children.length; i++) {
+    var child = children[i];
+
+    // Check if this child (or its descendant) is a competition header
+    var header = child.querySelector("[class*=competitionHeader]");
+    if (header) {
+        var titleEl = header.querySelector("[class*=-title]");
+        if (titleEl) currentLeague = titleEl.innerText.trim();
+        continue;
+    }
+
+    // Check if this child contains coupon(s)
+    var coupons = child.querySelectorAll("[class*=couponContainer]");
+    for (var j = 0; j < coupons.length; j++) {
+        var c = coupons[j];
+        // skip if this IS the list container itself
+        if (c.className.indexOf("couponListContainer") !== -1) continue;
+
+        var teamEls = c.querySelectorAll("[class*=teamNameLabel]");
+        if (teamEls.length < 2) continue;
+        var t1 = teamEls[0].innerText.trim();
+        var t2 = teamEls[1].innerText.trim();
+        if (!t1 || !t2) continue;
+
+        // status / time
+        var matchTime = "", matchStatus = "";
+        var statusEls = c.querySelectorAll("[class*=-status]");
+        if (statusEls.length > 0) {
+            var raw = statusEls[0].innerText.trim();
+            if (["HT","FT","AET","ET","PEN"].indexOf(raw) !== -1) {
+                matchStatus = raw; matchTime = raw;
+            } else {
+                matchTime = raw.replace(/['\u2032]/g, "");
+            }
+        }
+        // extra time
+        var extraEls = c.querySelectorAll("[class*=extraTime]");
+        if (extraEls.length > 0) {
+            var extra = extraEls[0].innerText.trim().replace(/['\u2032]/g, "");
+            if (extra) matchTime = matchTime + extra;
+        }
+
+        // scores
+        var scoreEls = c.querySelectorAll("[class*=inPlay]");
+        var hs = 0, as = 0;
+        if (scoreEls.length >= 2) {
+            hs = parseInt(scoreEls[0].innerText.trim()) || 0;
+            as = parseInt(scoreEls[1].innerText.trim()) || 0;
+        }
+
+        // odds (fractional text — converted in Python)
+        var oddEls = c.querySelectorAll("[class*=labelTwoLines]");
+        var o1 = "", ox = "", o2 = "";
+        if (oddEls.length >= 3) {
+            o1 = oddEls[0].innerText.trim();
+            ox = oddEls[1].innerText.trim();
+            o2 = oddEls[2].innerText.trim();
+        }
+
+        results.push({
+            team1: t1, team2: t2, tournament: currentLeague,
+            home_score: hs, away_score: as,
+            match_time: matchTime, match_status: matchStatus,
+            odd_1_raw: o1, odd_x_raw: ox, odd_2_raw: o2
+        });
+    }
+}
+return {football: true, matches: results};
+"""
 
 
 # ---------------------------------------------------------------------------
@@ -240,16 +290,19 @@ class BetfairScraper:
         if not self._loaded_once:
             log.info("Loading: %s", self.url)
             self._load_page(driver)
+            self._scroll_to_load_all(driver)
             self._loaded_once = True
         elif needs_refresh:
             log.debug("Refreshing page to pick up match changes…")
             self._refresh_page(driver)
+            self._scroll_to_load_all(driver)
 
         try:
             return self._parse_dom(driver)
         except StaleElementReferenceException:
             log.info("DOM stale, reloading page…")
             self._load_page(driver)
+            self._scroll_to_load_all(driver)
             return self._parse_dom(driver)
 
     # ------------------------------------------------------------------
@@ -275,9 +328,9 @@ class BetfairScraper:
             )
         except Exception:
             # couponListContainer may not exist when no sport is live;
-            # the page is still usable – _has_football_live will handle it
+            # the page is still usable – _parse_dom's JS will handle it
             pass
-        time.sleep(1)  # let JS settle
+        time.sleep(0.3)  # let JS settle
 
     def _dismiss_cookie_banner(self, driver) -> None:
         """Click 'Allow All Cookies' if the OneTrust banner is visible."""
@@ -290,22 +343,36 @@ class BetfairScraper:
         except Exception:
             pass  # banner not present or already dismissed
 
-    def _has_football_live(self, driver) -> bool:
+    def _parse_dom(self, driver) -> List[dict]:
         """
-        Return True if football matches are currently in-play.
+        Extract match data from the DOM using a single JavaScript call.
 
-        When no football is live, Betfair shows only other sports (tennis,
-        cricket, etc.) — "Football" disappears from the in-play sport list
-        in the sidebar, and all coupons have only 2 odds (no draw column).
-
-        We check both: absence of "Football" in the sidebar sport list AND
-        that no coupon has 3 odds (the 1-X-2 structure unique to football).
+        One ``execute_script`` roundtrip replaces hundreds of Selenium
+        ``find_element`` calls, bringing parse time from ~9 s to <0.2 s.
         """
-        # Fast check: look for "Football" in the in-play sport sidebar.
-        # The sidebar items are plain text nodes; we scan the coupon list's
-        # preceding sibling text for "Football".
-        body_text = driver.find_element(By.TAG_NAME, "body").text
-        return "Football" in body_text
+        data = driver.execute_script("return (function(){" + _JS_EXTRACT_ALL + "})()")
+
+        if not data or not data.get("football"):
+            return [{"_no_football": True}]
+
+        results: list[dict] = []
+        for m in data.get("matches", []):
+            results.append({
+                "team1": m["team1"],
+                "team2": m["team2"],
+                "tournament": m.get("tournament", ""),
+                "home_score": m.get("home_score", 0),
+                "away_score": m.get("away_score", 0),
+                "match_time": m.get("match_time", ""),
+                "match_status": m.get("match_status", ""),
+                "odd_1": fractional_to_decimal(m.get("odd_1_raw", "")),
+                "odd_X": fractional_to_decimal(m.get("odd_x_raw", "")),
+                "odd_2": fractional_to_decimal(m.get("odd_2_raw", "")),
+                "total_line": "",
+                "odd_over": "",
+                "odd_under": "",
+            })
+        return results
 
     def _scroll_to_load_all(self, driver) -> None:
         """
@@ -321,136 +388,22 @@ class BetfairScraper:
         for _ in range(max_scrolls):
             pos += viewport
             driver.execute_script(f"window.scrollTo(0, {pos})")
-            time.sleep(0.3)
+            time.sleep(0.15)
             new_height = driver.execute_script("return document.body.scrollHeight")
             if pos >= new_height and new_height == last_height:
                 break
             last_height = new_height
         # Scroll back to top so the page stays in a consistent state
         driver.execute_script("window.scrollTo(0, 0)")
-        time.sleep(0.3)
+        time.sleep(0.15)
 
-    def _parse_dom(self, driver) -> List[dict]:
-        """
-        Extract match data directly from the DOM using CSS selectors.
-
-        Page structure per match (inside couponListContainer):
-            competitionHeader  →  league name (in -title span)
-            couponContainer    →  one per match:
-                teamNameLabel  ×2  →  home team, away team
-                -status span       →  match time (e.g. "19'", "HT")
-                extraTime div      →  added time (e.g. "+7'")
-                inPlay squares ×2  →  home score, away score
-                labelTwoLines  ×3  →  odd_1, odd_X, odd_2 (fractional)
-
-        Returns empty list with a sentinel key "no_football" when no
-        football is currently live.
-        """
-        results: list[dict] = []
-
-        if not self._has_football_live(driver):
-            # Signal "no football" to the caller via sentinel
-            return [{"_no_football": True}]
-
-        # Scroll the page to force all lazy-loaded coupons into the DOM
-        self._scroll_to_load_all(driver)
-
-        coupon_list = driver.find_element(By.CSS_SELECTOR, SEL_COUPON_LIST)
-        coupons = coupon_list.find_elements(By.CSS_SELECTOR, SEL_COUPON)
-
-        for coupon in coupons:
-            try:
-                ev = self._parse_coupon(coupon, driver)
-                if ev:
-                    results.append(ev)
-            except StaleElementReferenceException:
-                log.debug("Stale element in coupon, skipping")
-            except Exception as exc:
-                log.debug("Failed to parse coupon: %s", exc)
-
-        return results
-
-    def _parse_coupon(self, coupon: WebElement, driver) -> Optional[dict]:
-        """Parse a single coupon container into a match dict."""
-
-        # --- Teams ---
-        team_els = coupon.find_elements(By.CSS_SELECTOR, SEL_TEAM_NAME)
-        if len(team_els) < 2:
-            return None
-        team1 = team_els[0].text.strip()
-        team2 = team_els[1].text.strip()
-        if not team1 or not team2:
-            return None
-
-        # --- Match time / status ---
-        match_time = ""
-        match_status = ""
-        status_els = coupon.find_elements(By.CSS_SELECTOR, SEL_STATUS)
-        if status_els:
-            raw_time = status_els[0].text.strip()
-            # e.g. "19'", "HT", "100'"
-            if raw_time in ("HT", "FT", "AET", "ET", "PEN"):
-                match_status = raw_time
-                match_time = raw_time
-            else:
-                # Strip the prime symbol: "19'" -> "19"
-                match_time = raw_time.replace("'", "").replace("′", "")
-
-        # --- Extra time (e.g. "+7'") ---
-        extra_els = coupon.find_elements(By.CSS_SELECTOR, SEL_EXTRA_TIME)
-        if extra_els:
-            extra = extra_els[0].text.strip()  # e.g. "+7'"
-            extra_clean = extra.replace("'", "").replace("′", "")
-            if extra_clean:
-                match_time = f"{match_time}{extra_clean}"  # e.g. "100+7"
-
-        # --- Scores ---
-        score_els = coupon.find_elements(By.CSS_SELECTOR, SEL_SCORE_SQUARE)
-        home_score = 0
-        away_score = 0
-        if len(score_els) >= 2:
-            try:
-                home_score = int(score_els[0].text.strip())
-            except ValueError:
-                pass
-            try:
-                away_score = int(score_els[1].text.strip())
-            except ValueError:
-                pass
-
-        # --- Odds (fractional → decimal) ---
-        odd_els = coupon.find_elements(By.CSS_SELECTOR, SEL_ODD_LABEL)
-        odd_1, odd_x, odd_2 = "", "", ""
-        if len(odd_els) >= 3:
-            odd_1 = fractional_to_decimal(odd_els[0].text)
-            odd_x = fractional_to_decimal(odd_els[1].text)
-            odd_2 = fractional_to_decimal(odd_els[2].text)
-
-        # --- League ---
-        tournament = _find_league_for_coupon(coupon, driver)
-
-        return {
-            "team1": team1,
-            "team2": team2,
-            "tournament": tournament,
-            "home_score": home_score,
-            "away_score": away_score,
-            "match_time": match_time,
-            "match_status": match_status,
-            "odd_1": odd_1,
-            "odd_X": odd_x,
-            "odd_2": odd_2,
-            "total_line": "",   # Not available on betfair overview page
-            "odd_over": "",
-            "odd_under": "",
-        }
 
     def close(self):
         self.driver.quit()
 
 
 # ---------------------------------------------------------------------------
-# CSV writer – one file per match (same schema as v2/coincasino_scraper.py)
+# CSV writer – one file per match (same schema as v2_coincasino/coincasino_scraper.py)
 # ---------------------------------------------------------------------------
 
 class MatchCSVWriter:

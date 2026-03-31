@@ -16,8 +16,8 @@ RUN pip install --no-cache-dir requests
 WORKDIR /app
 
 # Copy scraper code
-COPY v2/coincasino_scraper.py /app/coincasino_scraper.py
-COPY v2/sync_clock.py /app/sync_clock.py
+COPY v2_coincasino/coincasino_scraper.py /app/coincasino_scraper.py
+COPY v2_coincasino/sync_clock.py /app/sync_clock.py
 
 # Copy VPN config (will be overridden by volume mount if desired)
 COPY vpns/coincasino/*.conf /etc/wireguard/wg0.conf
