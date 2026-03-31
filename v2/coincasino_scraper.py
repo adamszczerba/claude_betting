@@ -24,6 +24,8 @@ from typing import Dict, List, Optional
 
 import requests
 
+from sync_clock import sleep_until_next_tick
+
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
@@ -390,9 +392,7 @@ def run(
         except Exception:
             log.exception("Unexpected error in cycle %d", cycle)
 
-        elapsed = time.monotonic() - t0
-        sleep_time = max(0.0, interval - elapsed)
-        time.sleep(sleep_time)
+        sleep_until_next_tick(interval)
 
 
 # ---------------------------------------------------------------------------

@@ -24,6 +24,7 @@ import datetime
 import logging
 import os
 import re
+import sys
 import time
 from typing import Dict, List, Optional
 
@@ -34,6 +35,12 @@ from selenium.common.exceptions import StaleElementReferenceException
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+
+# sync_clock lives in v2/ locally, or same dir in Docker — make it importable
+_here = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _here)                                       # Docker: /app
+sys.path.insert(0, os.path.join(_here, "..", "v2"))              # local dev
+from sync_clock import sleep_until_next_tick  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Config
@@ -529,8 +536,7 @@ def run(
                             cycle,
                         )
                         _last_no_football_log = now
-                    elapsed = time.monotonic() - t0
-                    time.sleep(max(0.0, interval - elapsed))
+                    sleep_until_next_tick(interval)
                     continue
 
                 for ev in events:
@@ -548,9 +554,7 @@ def run(
             except Exception as exc:
                 log.exception("Error in cycle %d: %s", cycle, exc)
 
-            elapsed = time.monotonic() - t0
-            sleep_time = max(0.0, interval - elapsed)
-            time.sleep(sleep_time)
+            sleep_until_next_tick(interval)
     except KeyboardInterrupt:
         log.info("\nStopped by user.")
     finally:
