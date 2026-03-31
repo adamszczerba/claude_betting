@@ -39,8 +39,10 @@ SOCCER_SPORT_ID = "1"  # Betby sport id for real soccer (not eSoccer)
 DEFAULT_POLL_INTERVAL = 2.0  # seconds
 
 # Key market IDs
-MARKET_1X2 = "1"   # outcomes: 1=home, 2=draw, 3=away
-MARKET_TOTAL = "18" # outcomes: 12=over, 13=under  (specifier: total=N)
+MARKET_1X2 = "1"    # outcomes: 1=home, 2=draw, 3=away
+MARKET_TOTAL = "18"  # outcomes: 12=over, 13=under  (specifier: total=N)
+MARKET_DC = "10"     # double chance — outcomes: 9=1X, 10=12, 11=X2
+MARKET_DNB = "2"     # draw no bet   — outcomes: 4=home, 5=away (big matches only)
 
 # Match-status codes relevant for soccer
 STATUS_LABELS = {
@@ -109,6 +111,11 @@ CSV_COLUMNS = [
     "total_line",  # e.g. 2.5
     "odd_over",
     "odd_under",
+    "odd_dc_1X",   # double chance: home or draw
+    "odd_dc_12",   # double chance: home or away
+    "odd_dc_X2",   # double chance: draw or away
+    "odd_dnb_1",   # draw no bet: home
+    "odd_dnb_2",   # draw no bet: away
 ]
 
 
@@ -298,6 +305,21 @@ def parse_soccer_events(snapshot: dict) -> List[dict]:
                     odd_under = outcomes.get("13", {}).get("k", "")
                     break
 
+        # -- double chance (1X / 12 / X2) --------------------------------
+        odd_dc_1x, odd_dc_12, odd_dc_x2 = "", "", ""
+        m_dc = markets.get(MARKET_DC, {}).get("", {})
+        if m_dc:
+            odd_dc_1x = m_dc.get("9", {}).get("k", "")
+            odd_dc_12 = m_dc.get("10", {}).get("k", "")
+            odd_dc_x2 = m_dc.get("11", {}).get("k", "")
+
+        # -- draw no bet (home / away) -----------------------------------
+        odd_dnb_1, odd_dnb_2 = "", ""
+        m_dnb = markets.get(MARKET_DNB, {}).get("", {})
+        if m_dnb:
+            odd_dnb_1 = m_dnb.get("4", {}).get("k", "")
+            odd_dnb_2 = m_dnb.get("5", {}).get("k", "")
+
         scheduled_ts = desc.get("scheduled", 0)
         scheduled_dt = (datetime.datetime.fromtimestamp(scheduled_ts)
                         if scheduled_ts else None)
@@ -318,6 +340,11 @@ def parse_soccer_events(snapshot: dict) -> List[dict]:
             "total_line": total_line,
             "odd_over": odd_over,
             "odd_under": odd_under,
+            "odd_dc_1X": odd_dc_1x,
+            "odd_dc_12": odd_dc_12,
+            "odd_dc_X2": odd_dc_x2,
+            "odd_dnb_1": odd_dnb_1,
+            "odd_dnb_2": odd_dnb_2,
             "scheduled": scheduled_dt,
         })
 
@@ -363,6 +390,11 @@ class MatchCSVWriter:
             ev["total_line"],
             ev["odd_over"],
             ev["odd_under"],
+            ev["odd_dc_1X"],
+            ev["odd_dc_12"],
+            ev["odd_dc_X2"],
+            ev["odd_dnb_1"],
+            ev["odd_dnb_2"],
         ]
         _append_row(self._paths[eid], row)
 
