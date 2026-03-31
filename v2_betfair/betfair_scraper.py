@@ -300,6 +300,29 @@ class BetfairScraper:
         body_text = driver.find_element(By.TAG_NAME, "body").text
         return "Football" in body_text
 
+    def _scroll_to_load_all(self, driver) -> None:
+        """
+        Scroll the page incrementally to trigger lazy-loaded match coupons.
+
+        Betfair only renders matches that are near the viewport.  Without
+        scrolling, matches below the fold are missing from the DOM.
+        """
+        last_height = driver.execute_script("return document.body.scrollHeight")
+        viewport = driver.execute_script("return window.innerHeight") or 600
+        pos = 0
+        max_scrolls = 30          # safety cap
+        for _ in range(max_scrolls):
+            pos += viewport
+            driver.execute_script(f"window.scrollTo(0, {pos})")
+            time.sleep(0.3)
+            new_height = driver.execute_script("return document.body.scrollHeight")
+            if pos >= new_height and new_height == last_height:
+                break
+            last_height = new_height
+        # Scroll back to top so the page stays in a consistent state
+        driver.execute_script("window.scrollTo(0, 0)")
+        time.sleep(0.3)
+
     def _parse_dom(self, driver) -> List[dict]:
         """
         Extract match data directly from the DOM using CSS selectors.
@@ -321,6 +344,9 @@ class BetfairScraper:
         if not self._has_football_live(driver):
             # Signal "no football" to the caller via sentinel
             return [{"_no_football": True}]
+
+        # Scroll the page to force all lazy-loaded coupons into the DOM
+        self._scroll_to_load_all(driver)
 
         coupon_list = driver.find_element(By.CSS_SELECTOR, SEL_COUPON_LIST)
         coupons = coupon_list.find_elements(By.CSS_SELECTOR, SEL_COUPON)
