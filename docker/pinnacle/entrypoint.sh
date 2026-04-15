@@ -2,20 +2,12 @@
 set -e
 CONF=/etc/wireguard/wg0.conf
 CLEAN_CONF=/tmp/wg0-clean.conf
-
 echo "[entrypoint] Configuring WireGuard manually..."
-
-# wg setconf does NOT understand Address, DNS, or other wg-quick extensions.
-# Extract them first, then strip them to create a clean config.
 WG_ADDRS=$(grep -iE "^\s*Address\s*=" "$CONF" | sed 's/.*=\s*//' | head -1)
 WG_DNS=$(grep -iE "^\s*DNS\s*=" "$CONF" | sed 's/.*=\s*//' | head -1)
-
-# Build a clean config with only native WireGuard directives
 grep -ivE "^\s*(Address|DNS)\s*=" "$CONF" > "$CLEAN_CONF"
-
 ip link add dev wg0 type wireguard
 wg setconf wg0 "$CLEAN_CONF"
-
 for addr in $(echo "$WG_ADDRS" | tr ',' ' '); do
     addr=$(echo "$addr" | tr -d ' ')
     [ -n "$addr" ] && ip address add "$addr" dev wg0
@@ -39,6 +31,5 @@ echo ""
 echo "[entrypoint] Public IP via VPN:"
 curl -s --max-time 15 https://ifconfig.me || echo "(could not reach ifconfig.me)"
 echo ""
-echo "[entrypoint] Starting Betfair Exchange scraper..."
-exec python /app/betfair_exchange_scraper.py -o /app/db "$@"
-
+echo "[entrypoint] Starting Pinnacle scraper..."
+exec python /app/pinnacle_scraper.py -o /app/db "$@"

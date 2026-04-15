@@ -47,3 +47,95 @@ services:
     shm_size: "2g"
     restart: unless-stopped
 
+  # ───────────────────────────────────────────────────────────────────────
+  # Betfair Exchange scraper  (Selenium + headless Chrome)
+  # VPN: ProtonVPN UK  (same tunnel as Betfair sportsbook)
+  # Odds = average(back, lay) from the Exchange
+  # ───────────────────────────────────────────────────────────────────────
+  betfair_exchange:
+    build:
+      context: .
+      dockerfile: docker/betfair_exchange/Dockerfile
+    container_name: scraper-betfair-exchange
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv6.conf.all.disable_ipv6=0
+    volumes:
+      # Persist scraped CSVs on the host: match_database/betfair_exchange/<date>/
+      - ./match_database/betfair_exchange:/app/db
+      # Mount VPN config (same UK proxy as betfair)
+      - ./vpns/betfair/manchester1_protonvpn-UK-232.conf:/etc/wireguard/wg0.conf:ro
+    # Chrome needs more shared memory
+    shm_size: "2g"
+    restart: unless-stopped
+
+  # ───────────────────────────────────────────────────────────────────────
+  # Bet365 scraper  (Selenium + headless Chrome)
+  # VPN: ProtonVPN UK  (same tunnel as Betfair)
+  # ───────────────────────────────────────────────────────────────────────
+  bet365:
+    build:
+      context: .
+      dockerfile: docker/bet365/Dockerfile
+    container_name: scraper-bet365
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv6.conf.all.disable_ipv6=0
+    volumes:
+      # Persist scraped CSVs on the host: match_database/bet365/<date>/
+      - ./match_database/bet365:/app/db
+      # Mount VPN config (same UK proxy as betfair)
+      - ./vpns/betfair/manchester1_protonvpn-UK-232.conf:/etc/wireguard/wg0.conf:ro
+    # Chrome needs more shared memory
+    shm_size: "2g"
+    restart: unless-stopped
+
+  # ───────────────────────────────────────────────────────────────────────
+  # Pinnacle scraper  (API-based, lightweight)
+  # VPN: ProtonVPN UK  (geo-restricted)
+  # ───────────────────────────────────────────────────────────────────────
+  pinnacle:
+    build:
+      context: .
+      dockerfile: docker/pinnacle/Dockerfile
+    container_name: scraper-pinnacle
+    cap_add:
+      - NET_ADMIN          # required for WireGuard
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv6.conf.all.disable_ipv6=0
+    volumes:
+      - ./match_database/pinnacle:/app/db
+      - ./vpns/pinnacle/manchester1_protonvpn-UK-232.conf:/etc/wireguard/wg0.conf:ro
+    restart: unless-stopped
+
+  # ───────────────────────────────────────────────────────────────────────
+  # LVBet scraper  (API-based, no VPN needed)
+  # Polish bookmaker — publicly accessible
+  # ───────────────────────────────────────────────────────────────────────
+  lvbet:
+    build:
+      context: .
+      dockerfile: docker/lvbet/Dockerfile
+    container_name: scraper-lvbet
+    volumes:
+      - ./match_database/lvbet:/app/db
+    restart: unless-stopped
+
+  # ───────────────────────────────────────────────────────────────────────
+  # STS scraper  (API-based, no VPN needed)
+  # Polish bookmaker — publicly accessible
+  # ───────────────────────────────────────────────────────────────────────
+  sts:
+    build:
+      context: .
+      dockerfile: docker/sts/Dockerfile
+    container_name: scraper-sts
+    volumes:
+      - ./match_database/sts:/app/db
+    restart: unless-stopped
+

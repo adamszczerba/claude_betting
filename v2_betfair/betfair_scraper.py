@@ -272,8 +272,15 @@ class BetfairScraper:
         options.add_argument(f'--user-agent={HEADERS_UA}')
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option('useAutomationExtension', False)
+        
+        # Explicitly set Chrome binary path for Docker containers
+        chrome_bin = os.environ.get("CHROME_BIN", "/usr/bin/google-chrome")
+        if os.path.exists(chrome_bin):
+            options.binary_location = chrome_bin
+            log.info(f"Using Chrome binary at: {chrome_bin}")
+        
         self.driver = webdriver.Chrome(options=options)
-        self.driver.set_page_load_timeout(20)
+        self.driver.set_page_load_timeout(30)
         self._loaded_once = False
 
     def fetch_events(self, needs_refresh: bool = False) -> List[dict]:

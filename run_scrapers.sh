@@ -1,13 +1,16 @@
 #!/bin/bash
 # run_scrapers.sh
-# Builds & launches CoinCasino and Betfair scrapers, each inside its own
-# Docker container with an isolated WireGuard VPN tunnel:
+# Builds & launches all scrapers, each inside its own Docker container.
+# VPN-tunnelled scrapers use isolated WireGuard tunnels:
 #   - CoinCasino  → ProtonVPN Poland   (vpns/coincasino/)
 #   - Betfair     → ProtonVPN UK       (vpns/betfair/)
+#   - Pinnacle    → ProtonVPN UK       (vpns/pinnacle/)
+# No-VPN scrapers (Polish bookmakers, publicly accessible):
+#   - LVBet
+#   - STS
 #
 # Scraped CSV files are persisted on the host under:
-#   match_database/coincasino/
-#   match_database/betfair/
+#   match_database/<bookmaker>/
 #
 # Logs are shown in separate terminal windows when a supported terminal
 # emulator is found; otherwise they are merged (labeled) into this terminal.
@@ -67,12 +70,17 @@ open_log_terminal() {
 }
 
 # ── Main ─────────────────────────────────────────────────────────────────
-echo "╔══════════════════════════════════════════════════╗"
-echo "║       Betting Scrapers — Docker Launcher        ║"
-echo "╠══════════════════════════════════════════════════╣"
-echo "║  CoinCasino  VPN: ProtonVPN Poland (WireGuard)  ║"
-echo "║  Betfair     VPN: ProtonVPN UK     (WireGuard)  ║"
-echo "╚══════════════════════════════════════════════════╝"
+echo "╔══════════════════════════════════════════════════════╗"
+echo "║         Betting Scrapers — Docker Launcher          ║"
+echo "╠══════════════════════════════════════════════════════╣"
+echo "║  CoinCasino       VPN: ProtonVPN Poland (WireGuard) ║"
+echo "║  Betfair          VPN: ProtonVPN UK     (WireGuard) ║"
+echo "║  Betfair Exchange VPN: ProtonVPN UK     (WireGuard) ║"
+echo "║  Bet365           VPN: ProtonVPN UK     (WireGuard) ║"
+echo "║  Pinnacle         VPN: ProtonVPN UK     (WireGuard) ║"
+echo "║  LVBet            No VPN                            ║"
+echo "║  STS              No VPN                            ║"
+echo "╚══════════════════════════════════════════════════════╝"
 echo ""
 
 # 1. Build & start containers
@@ -89,9 +97,34 @@ echo ""
 echo "[*] Match data will be stored in:"
 echo "      match_database/coincasino/"
 echo "      match_database/betfair/"
+echo "      match_database/betfair_exchange/"
+echo "      match_database/bet365/"
+echo "      match_database/pinnacle/"
+echo "      match_database/lvbet/"
+echo "      match_database/sts/"
 echo ""
 
-# 4. Open logs
+# 4. Start the dashboard
+echo "[*] Starting Betting Dashboard on http://127.0.0.1:8050 ..."
+# Kill any stale dashboard instance
+fuser -k 8050/tcp &>/dev/null || true
+sleep 1
+# Activate venv and launch dashboard in background
+(
+    source "$SCRIPT_DIR/.venv/bin/activate" 2>/dev/null || true
+    nohup python "$SCRIPT_DIR/dashboard/app.py" > /tmp/dashboard.log 2>&1 &
+)
+sleep 2
+if curl -s -o /dev/null -w '' http://127.0.0.1:8050/ 2>/dev/null; then
+    echo "[*] Dashboard is live at http://127.0.0.1:8050"
+    # Try to open in browser
+    xdg-open http://127.0.0.1:8050 2>/dev/null || true
+else
+    echo "[!] Dashboard may not have started — check /tmp/dashboard.log"
+fi
+echo ""
+
+# 5. Open logs
 TERM_EMU=$(find_terminal)
 
 if [ -n "$TERM_EMU" ]; then
@@ -100,15 +133,24 @@ if [ -n "$TERM_EMU" ]; then
     open_log_terminal "CoinCasino Scraper (PL VPN)" "scraper-coincasino"
     sleep 1
     open_log_terminal "Betfair Scraper (UK VPN)"    "scraper-betfair"
+    sleep 1
+    open_log_terminal "Betfair Exchange Scraper (UK VPN)" "scraper-betfair-exchange"
+    sleep 1
+    open_log_terminal "Bet365 Scraper (UK VPN)" "scraper-bet365"
+    sleep 1
+    open_log_terminal "Pinnacle Scraper (UK VPN)" "scraper-pinnacle"
+    sleep 1
+    open_log_terminal "LVBet Scraper (no VPN)" "scraper-lvbet"
+    sleep 1
+    open_log_terminal "STS Scraper (no VPN)" "scraper-sts"
     echo ""
-    echo "[*] Done! Two terminal windows should now show live logs."
+    echo "[*] Done! Seven terminal windows should now show live logs."
 else
     echo "[*] No GUI terminal found — showing merged logs below."
-    echo "    (CoinCasino lines prefixed 'coincasino |', Betfair prefixed 'betfair |')"
     echo "    Press Ctrl+C to stop following logs (containers keep running)."
     echo ""
-    # Follow both services in this terminal — docker compose labels each line
-    $COMPOSE logs -f --tail=50 coincasino betfair
+    # Follow all services in this terminal — docker compose labels each line
+    $COMPOSE logs -f --tail=50 coincasino betfair betfair_exchange bet365 pinnacle lvbet sts
 fi
 
 echo ""

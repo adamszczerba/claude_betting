@@ -51,6 +51,9 @@ BOOKMAKER_TAG = "b365"
 DEFAULT_POLL_INTERVAL = 2.0   # seconds between DOM reads
 DEFAULT_REFRESH_INTERVAL = 60.0  # seconds between full page refreshes
 FETCH_WAIT_TIME_SEC = 15      # Selenium wait for key element
+SCROLL_STEP_SETTLE_SEC = 0.5
+POST_SCROLL_SETTLE_SEC = 1.0
+REFRESH_RETRIES = 3
 
 CSV_COLUMNS = [
     "timestamp",
@@ -151,6 +154,44 @@ def parse_decimal_odds(raw: str) -> str:
 # ---------------------------------------------------------------------------
 _JS_EXTRACT_ALL = r"""
 var results = [];
+var debugInfo = {
+    strategy1_containers: 0,
+    strategy2_ovm_fixtures: 0,
+    scanned_elements: 0,
+    has_football_markers: false
+};
+
+var bodyTextEarly = document.body ? (document.body.innerText || "") : "";
+var bodyLowerEarly = bodyTextEarly.toLowerCase();
+var hasShellMarkers = (
+    bodyTextEarly.indexOf("Open Account Offer") !== -1 &&
+    bodyTextEarly.indexOf("All Sports") !== -1 &&
+    bodyTextEarly.indexOf("In-Play") !== -1
+);
+var hasOddsNumbers = /\b\d+\.\d{2}\b/.test(bodyTextEarly);
+if (
+    bodyLowerEarly.indexOf("sorry, you have been blocked") !== -1 ||
+    bodyLowerEarly.indexOf("unable to access bet365.com") !== -1 ||
+    bodyLowerEarly.indexOf("cloudflare ray id") !== -1
+) {
+    return {
+        football: false,
+        matches: [],
+        blocked: true,
+        block_reason: "cloudflare",
+        debug_info: debugInfo
+    };
+}
+
+if (hasShellMarkers && !hasOddsNumbers) {
+    return {
+        football: false,
+        matches: [],
+        blocked: true,
+        block_reason: "shell-no-live-markets",
+        debug_info: debugInfo
+    };
+}
 
 // ── Strategy 1: Modern Bet365 in-play DOM ──
 // The in-play page groups matches by competition within collapsible sections.
@@ -192,6 +233,7 @@ var currentLeague = "";
 
 // Try to find competition groups (sections with headers + events)
 var allElements = ipContainer.querySelectorAll('*');
+debugInfo.scanned_elements = allElements.length;
 
 // Build an index of all visible text blocks for team pairs and odds
 // Strategy: find elements that look like match containers
@@ -252,6 +294,7 @@ if (matchContainers.length === 0) {
         }
     }
 }
+debugInfo.strategy1_containers = matchContainers.length;
 
 // ── Strategy 2: Direct search for the Bet365 IPG (In-Play Grid) structure ──
 // Bet365 typically has:
@@ -264,6 +307,7 @@ var ovmFixtures = document.querySelectorAll(
     '[class*="ovm-Fixture"], [class*="Fixture"][class*="Detail"], ' +
     '[class*="rcl-ParticipantFixture"]'
 );
+debugInfo.strategy2_ovm_fixtures = ovmFixtures.length;
 
 if (ovmFixtures.length > 0) {
     results = []; // reset if we find these
@@ -379,16 +423,22 @@ if (ovmFixtures.length > 0) {
 if (results.length === 0) {
     // Check if the page has soccer/football content at all
     var bodyText = document.body.innerText || "";
+    debugInfo.has_football_markers = (
+        bodyText.indexOf("Soccer") !== -1 ||
+        bodyText.indexOf("Football") !== -1 ||
+        bodyText.indexOf("In-Play") !== -1 ||
+        bodyText.indexOf("Live") !== -1
+    );
     if (bodyText.indexOf("Soccer") === -1 && bodyText.indexOf("Football") === -1 &&
         bodyText.indexOf("In-Play") === -1 && bodyText.indexOf("Live") === -1) {
-        return {football: false, matches: []};
+        return {football: false, matches: [], debug_info: debugInfo};
     }
     // Page has content but we couldn't parse it — return empty matches
     // so the scraper knows the page loaded but found no parseable matches
-    return {football: true, matches: []};
+    return {football: true, matches: [], debug_info: debugInfo};
 }
 
-return {football: true, matches: results};
+return {football: true, matches: results, debug_info: debugInfo};
 """
 
 
@@ -409,11 +459,19 @@ class Bet365Scraper:
         options.add_argument('--no-sandbox')
         options.add_argument('--disable-dev-shm-usage')
         options.add_argument('--disable-extensions')
+        options.add_argument('--window-size=1920,3000')
         options.add_argument(f'--user-agent={HEADERS_UA}')
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option('useAutomationExtension', False)
+        
+        # Explicitly set Chrome binary path for Docker containers
+        chrome_bin = os.environ.get("CHROME_BIN", "/usr/bin/google-chrome")
+        if os.path.exists(chrome_bin):
+            options.binary_location = chrome_bin
+            log.info(f"Using Chrome binary at: {chrome_bin}")
+        
         self.driver = webdriver.Chrome(options=options)
-        self.driver.set_page_load_timeout(30)
+        self.driver.set_page_load_timeout(40)
         self._loaded_once = False
 
     def fetch_events(self, needs_refresh: bool = False) -> List[dict]:
@@ -431,18 +489,30 @@ class Bet365Scraper:
             log.info("Loading: %s", self.url)
             self._load_page(driver)
             self._scroll_to_load_all(driver)
+            time.sleep(POST_SCROLL_SETTLE_SEC)
             self._loaded_once = True
         elif needs_refresh:
             log.debug("Refreshing page to pick up match changes…")
             self._refresh_page(driver)
             self._scroll_to_load_all(driver)
+            time.sleep(POST_SCROLL_SETTLE_SEC)
 
         try:
-            return self._parse_dom(driver)
+            events = self._parse_dom(driver)
+            if not events:
+                # On shell/home pages, force navigation once and retry extraction.
+                self._ensure_inplay_soccer_view(driver)
+                self._scroll_to_load_all(driver)
+                time.sleep(POST_SCROLL_SETTLE_SEC)
+                retry_events = self._parse_dom(driver)
+                if retry_events:
+                    return retry_events
+            return events
         except StaleElementReferenceException:
             log.info("DOM stale, reloading page…")
             self._load_page(driver)
             self._scroll_to_load_all(driver)
+            time.sleep(POST_SCROLL_SETTLE_SEC)
             return self._parse_dom(driver)
 
     # ------------------------------------------------------------------
@@ -451,12 +521,30 @@ class Bet365Scraper:
         driver.get(self.url)
         self._wait_for_content(driver)
         self._dismiss_cookie_banner(driver)
+        self._ensure_inplay_soccer_view(driver)
 
     def _refresh_page(self, driver) -> None:
-        """Refresh + wait for content to re-appear."""
-        driver.get(self.url)   # hash-routing: refresh via re-navigate
-        self._wait_for_content(driver)
-        self._dismiss_cookie_banner(driver)
+        """Refresh + wait for content to re-appear, with retries."""
+        for attempt in range(REFRESH_RETRIES):
+            try:
+                driver.get(self.url)   # hash-routing: refresh via re-navigate
+                self._wait_for_content(driver)
+                self._dismiss_cookie_banner(driver)
+                self._ensure_inplay_soccer_view(driver)
+                return
+            except Exception as e:
+                if attempt < REFRESH_RETRIES - 1:
+                    log.warning(
+                        "Refresh failed (attempt %d/%d): %s",
+                        attempt + 1,
+                        REFRESH_RETRIES,
+                        e,
+                    )
+                    time.sleep(2)
+                else:
+                    log.error("Refresh failed after %d attempts; forcing full reload", REFRESH_RETRIES)
+                    self._load_page(driver)
+                    return
 
     def _wait_for_content(self, driver) -> None:
         """Wait until the in-play content is usable."""
@@ -493,6 +581,83 @@ class Bet365Scraper:
                         return
                 except Exception:
                     continue
+
+            # Text-based fallback for current bet365 consent dialog
+            for xpath in [
+                "//button[contains(normalize-space(.), 'Accept All')]",
+                "//button[contains(normalize-space(.), 'Accept all')]",
+                "//*[self::a or self::button or self::div][contains(normalize-space(.), 'Accept All')]",
+            ]:
+                try:
+                    btn = driver.find_element(By.XPATH, xpath)
+                    if btn.is_displayed():
+                        driver.execute_script("arguments[0].click();", btn)
+                        log.info("Cookie consent accepted via text fallback")
+                        time.sleep(0.8)
+                        return
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+    def _ensure_inplay_soccer_view(self, driver) -> None:
+        """Best-effort navigation to In-Play > Soccer if shell page is shown."""
+        try:
+            inplay_clicked = driver.execute_script(
+                """
+                function clickLabel(label) {
+                    const nodes = Array.from(document.querySelectorAll('a, button, div, span'));
+                    let clicked = false;
+                    for (const n of nodes) {
+                        const txt = (n.innerText || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+                        if (!txt || txt.indexOf(label.toLowerCase()) === -1) continue;
+                        const r = n.getBoundingClientRect();
+                        const visible = r.width > 0 && r.height > 0 && r.top >= 0 && r.bottom <= window.innerHeight;
+                        if (visible) {
+                            n.click();
+                            clicked = true;
+                            break;
+                        }
+                    }
+                    return clicked;
+                }
+
+                return clickLabel('In-Play');
+                """
+            )
+
+            soccer_clicked = False
+            if inplay_clicked:
+                time.sleep(0.8)
+                soccer_clicked = driver.execute_script(
+                    """
+                    function clickLabel(label) {
+                        const nodes = Array.from(document.querySelectorAll('a, button, div, span'));
+                        let clicked = false;
+                        for (const n of nodes) {
+                            const txt = (n.innerText || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+                            if (!txt || txt.indexOf(label.toLowerCase()) === -1) continue;
+                            try {
+                                n.scrollIntoView({block: 'center'});
+                            } catch (_) {}
+                            n.click();
+                            clicked = true;
+                            break;
+                        }
+                        return clicked;
+                    }
+
+                    return clickLabel('Soccer');
+                    """
+                )
+
+            if inplay_clicked or soccer_clicked:
+                log.info(
+                    "Navigation assist: inplay_clicked=%s soccer_clicked=%s",
+                    inplay_clicked,
+                    soccer_clicked,
+                )
+                time.sleep(1.5)
         except Exception:
             pass
 
@@ -503,15 +668,44 @@ class Bet365Scraper:
         One ``execute_script`` roundtrip replaces hundreds of Selenium
         ``find_element`` calls, keeping parse time low.
         """
-        data = driver.execute_script(
-            "return (function(){" + _JS_EXTRACT_ALL + "})()"
-        )
+        try:
+            data = driver.execute_script(
+                "return (function(){" + _JS_EXTRACT_ALL + "})()"
+            )
+        except Exception as e:
+            log.error(f"JavaScript extraction failed: {e}")
+            return []
 
-        if not data or not data.get("football"):
+        if not data:
+            log.warning("JavaScript returned no data")
+            return []
+
+        if data.get("blocked"):
+            reason = data.get("block_reason", "unknown")
+            log.error("Bet365 page is blocked by anti-bot protection (%s)", reason)
+            return [{"_blocked": True, "reason": reason}]
+            
+        if not data.get("football"):
+            log.info("No football/soccer content detected on page")
             return [{"_no_football": True}]
 
+        matches = data.get("matches", [])
+        debug_info = data.get("debug_info", {})
+        log.info(f"Extracted {len(matches)} matches from DOM")
+        
+        if len(matches) == 0:
+            log.warning("Football content detected but no matches parsed - possible DOM structure change")
+            if debug_info:
+                log.warning(
+                    "Selector debug: strategy1_containers=%s strategy2_ovm_fixtures=%s scanned_elements=%s has_football_markers=%s",
+                    debug_info.get("strategy1_containers"),
+                    debug_info.get("strategy2_ovm_fixtures"),
+                    debug_info.get("scanned_elements"),
+                    debug_info.get("has_football_markers"),
+                )
+
         results: list[dict] = []
-        for m in data.get("matches", []):
+        for m in matches:
             results.append({
                 "team1": m["team1"],
                 "team2": m["team2"],
@@ -543,14 +737,14 @@ class Bet365Scraper:
         for _ in range(max_scrolls):
             pos += viewport
             driver.execute_script(f"window.scrollTo(0, {pos})")
-            time.sleep(0.2)
+            time.sleep(SCROLL_STEP_SETTLE_SEC)
             new_height = driver.execute_script("return document.body.scrollHeight")
             if pos >= new_height and new_height == last_height:
                 break
             last_height = new_height
         # Scroll back to top so the page stays in a consistent state
         driver.execute_script("window.scrollTo(0, 0)")
-        time.sleep(0.2)
+        time.sleep(SCROLL_STEP_SETTLE_SEC)
 
     def close(self):
         self.driver.quit()
@@ -620,8 +814,10 @@ def run(
 
     cycle = 0
     _last_no_football_log: float = 0.0
+    _last_blocked_log: float = 0.0
     _last_refresh: float = 0.0            # force refresh on first cycle
     NO_FOOTBALL_LOG_INTERVAL = 60.0
+    BLOCKED_LOG_INTERVAL = 60.0
 
     try:
         while True:
@@ -643,6 +839,19 @@ def run(
                             cycle,
                         )
                         _last_no_football_log = now
+                    sleep_until_next_tick(interval)
+                    continue
+
+                # --- Blocked-by-anti-bot sentinel ---
+                if events and events[0].get("_blocked"):
+                    now = time.monotonic()
+                    if now - _last_blocked_log >= BLOCKED_LOG_INTERVAL:
+                        log.error(
+                            "cycle %4d  |  bet365 access blocked (%s); check VPN exit node or rotate config",
+                            cycle,
+                            events[0].get("reason", "unknown"),
+                        )
+                        _last_blocked_log = now
                     sleep_until_next_tick(interval)
                     continue
 
