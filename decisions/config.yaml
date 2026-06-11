@@ -1,0 +1,47 @@
+# Betting system — decisions engine configuration
+# Edit this file to tune thresholds, bankroll, and risk limits.
+
+bankroll_eur: 1000.0
+kelly_fraction: 0.25          # ¼-Kelly (conservative)
+
+value_thresholds:
+  main_markets: 3.0           # % minimum edge for odd_1, odd_X, odd_2
+  niche_markets: 5.0          # % minimum edge for odd_over, odd_under
+
+risk:
+  max_stake_eur: 50.0
+  min_stake_eur: 1.0
+  max_concurrent_bets: 3
+  max_exposure_per_match_eur: 100.0
+  # No bets placed when match_status is one of these
+  suspend_on_status:
+    - "HT"
+    - "FT"
+    - "AET"
+    - "PEN"
+  # Minimum minutes remaining required (HH:MM format match_time < this)
+  # Set to 0 to disable the filter
+  min_minutes_remaining: 5
+  # Reject odds rows older than this many seconds (0 = disabled)
+  # Prevents stale CSV rows from generating false signals when scrapers are slow/stopped
+  max_odds_age_sec: 120
+
+leagues:
+  # Empty whitelist = all leagues allowed
+  whitelist: []
+  blacklist:
+    - "Esoccer"
+    - "Virtual"
+    - "Simulated"
+
+execution:
+  # "dry_run" → paper trading only; "live" → real bets
+  mode: "dry_run"
+  # Coincasino credentials (override via env vars CC_EMAIL / CC_PASSWORD)
+  cc_email: ""
+  cc_password: ""
+  # Abort bet if accepted price deviates more than this fraction from requested
+  price_drift_threshold: 0.02
+  # Randomise stake by ±this fraction to appear more human
+  stake_jitter_fraction: 0.02
+

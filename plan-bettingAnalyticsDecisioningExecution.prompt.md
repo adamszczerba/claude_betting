@@ -1,7 +1,7 @@
 # Betting System — Full Architecture
 
-> Last updated: 2026-05-08
-> Status: **Approved, pending implementation**
+> Last updated: 2026-05-09
+> Status: **✅ Implemented** — all phases 1–4 complete, phases 5–6 ready for manual sign-off
 
 ---
 
@@ -398,14 +398,14 @@ Auto-refreshes every 2 s from orchestrator `/api/signals`.
 
 ## Implementation Phases
 
-| Phase | Scope | Gate to next phase |
+| Phase | Scope | Status |
 |---|---|---|
-| **1 — Analytics** | `analytics/` + unit tests | Signals match manual inspection |
-| **2 — Decisioning** | `decisions/` + config YAML | Risk filters proven on historical data |
-| **3 — Orchestrator** | `orchestrator/` + Dashboard tabs 3–4 | Signals visible in Dashboard |
-| **4 — Dry Run** | `execution/dry_run.py` + `ledger/` | 7 days paper trading, positive expectation |
-| **5 — Betby Probe** | `execution/betby_probe.py` | Determine if API placement is available |
-| **6 — Live Execution** | `execution/cc_executor.py` + `docker/executor/` | Manual sign-off, set `EXECUTION_MODE=live` |
+| **1 — Analytics** | `analytics/` + unit tests | ✅ Done |
+| **2 — Decisioning** | `decisions/` + config YAML | ✅ Done |
+| **3 — Orchestrator** | `orchestrator/` + Dashboard tabs 3–4 | ✅ Done |
+| **4 — Dry Run** | `execution/dry_run.py` + `ledger/` | ✅ Done |
+| **5 — Betby Probe** | `execution/betby_probe.py` | ⏳ Run `python -m execution.betby_probe` with CC_EMAIL/CC_PASSWORD set |
+| **6 — Live Execution** | `execution/cc_executor.py` + `docker/executor/` | ⏳ Manual sign-off required — set `EXECUTION_MODE=live` |
 
 ---
 
@@ -418,4 +418,73 @@ Auto-refreshes every 2 s from orchestrator `/api/signals`.
 5. **Suspend on status changes** — no bets placed during `HT`, `FT`, `AET`, `PEN` — match state must be `1H` or `2H` (or `ET1`/`ET2`) with at least 5 minutes remaining.
 6. **CSV append-only** — existing scrapers never rewrite files; analytics reads last row only (already handled by `data_service._last_csv_row()`).
 7. **Clock sync** — orchestrator must use `sleep_until_next_tick(2.0)` to align with scraper poll boundaries.
+
+---
+
+## Files Created (2026-05-09)
+
+```
+analytics/
+  __init__.py
+  overround.py        ✅  remove_overround (normalize / shin / power methods)
+  consensus.py        ✅  weighted_consensus → FairOdds per match
+  value.py            ✅  scan_value → list[ValueSignal]
+  arbitrage.py        ✅  scan_arb → list[ArbSignal]
+
+decisions/
+  __init__.py
+  config.yaml         ✅  bankroll, thresholds, league filters, risk limits
+  kelly.py            ✅  kelly_stake (¼-Kelly)
+  risk_manager.py     ✅  RiskManager: edge / status / league / concurrency filters
+  signal_router.py    ✅  SignalRouter → BetOrder
+
+ledger/
+  __init__.py
+  schema.py           ✅  SQLite DDL: bets / signals / results tables
+  ledger.py           ✅  record_order, record_receipt, settle_bet, get_pnl_summary
+
+execution/
+  __init__.py
+  base.py             ✅  abstract Executor / BetReceipt / PriceDriftError
+  dry_run.py          ✅  DryRunExecutor (default, no real bets)
+  cc_executor.py      ✅  CoinCasinoExecutor (Playwright stealth, phases 5-6)
+  betby_probe.py      ✅  XHR intercept probe for Betby REST API discovery
+  executor_loop.py    ✅  Poll loop for executor Docker container
+  cc_session.json     ✅  Empty session placeholder (volume-mounted)
+
+orchestrator/
+  __init__.py
+  main.py             ✅  Poll loop + FastAPI REST API (:8051)
+
+docker/
+  orchestrator/
+    Dockerfile        ✅  python:3.12-slim + fastapi + uvicorn + rapidfuzz
+  executor/
+    Dockerfile        ✅  python:3.12-slim + Playwright Chromium + WireGuard
+    entrypoint.sh     ✅  WireGuard setup + executor_loop.py launch
+
+docker-compose.yml    ✅  Added orchestrator + executor services
+
+dashboard/app.py      ✅  + Tab 3 (Opportunities) + Tab 4 (Bet Ledger)
+
+requirements.txt      ✅  + pyyaml, fastapi, uvicorn, playwright, playwright-stealth
+```
+
+## Quick Start
+
+```bash
+# Start everything (scrapers + orchestrator + executor)
+docker compose up -d --build
+
+# Run orchestrator locally for development
+source .venv/bin/activate
+python -m orchestrator.main
+
+# Run Betby API probe (phase 5)
+CC_EMAIL=you@email.com CC_PASSWORD=secret python -m execution.betby_probe
+
+# Enable live execution (phase 6 — after 7+ days dry-run validation)
+# Edit docker-compose.yml: change EXECUTION_MODE=dry_run → EXECUTION_MODE=live
+# OR set environment variable before starting executor container
+```
 

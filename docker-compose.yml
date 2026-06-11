@@ -139,3 +139,52 @@ services:
       - ./match_database/sts:/app/db
     restart: unless-stopped
 
+  # ───────────────────────────────────────────────────────────────────────
+  # Orchestrator — analytics, decisions, REST API (port 8051)
+  # No VPN needed — reads match_database/ and writes ledger/
+  # ───────────────────────────────────────────────────────────────────────
+  orchestrator:
+    build:
+      context: .
+      dockerfile: docker/orchestrator/Dockerfile
+    container_name: orchestrator
+    volumes:
+      - ./match_database:/app/match_database:ro
+      - ./ledger:/app/ledger
+    ports:
+      - "8051:8051"
+    environment:
+      - DB_ROOT=/app/match_database
+      - LEDGER_PATH=/app/ledger/bets.db
+      - POLL_INTERVAL=2.0
+      - ORCHESTRATOR_PORT=8051
+    restart: unless-stopped
+
+  # ───────────────────────────────────────────────────────────────────────
+  # Executor — CoinCasino Playwright bet placement
+  # VPN: ProtonVPN Poland  (same config as scraper-coincasino)
+  # EXECUTION_MODE=dry_run by default — set to "live" for real bets
+  # ───────────────────────────────────────────────────────────────────────
+  executor:
+    build:
+      context: .
+      dockerfile: docker/executor/Dockerfile
+    container_name: executor-coincasino
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv6.conf.all.disable_ipv6=0
+    volumes:
+      - ./ledger:/app/ledger
+      - ./vpns/coincasino/warszawa1_protonvpn-PL-88.conf:/etc/wireguard/wg0.conf:ro
+      - ./execution/cc_session.json:/app/cc_session.json
+    shm_size: "2g"
+    environment:
+      - EXECUTION_MODE=dry_run
+      - LEDGER_PATH=/app/ledger/bets.db
+      - CC_EMAIL=${CC_EMAIL:-}
+      - CC_PASSWORD=${CC_PASSWORD:-}
+      - CC_SESSION_PATH=/app/cc_session.json
+    restart: unless-stopped
+

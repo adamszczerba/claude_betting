@@ -3,3 +3,8 @@ dash==2.17.1
 plotly==5.24.1
 rapidfuzz
 pandas
+pyyaml
+fastapi
+uvicorn[standard]
+playwright
+playwright-stealth

@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Live Betting Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+/* ── Reset & base ─────────────────────────────────────────────── */
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Consolas,monospace;background:#1a1a2e;color:#e0e0e0;
+     padding:16px;min-height:100vh}
+a{color:#00d4ff}
+
+/* ── Header ──────────────────────────────────────────────────── */
+h1{color:#00d4ff;text-align:center;font-size:1.35em;margin-bottom:6px}
+#status-bar{text-align:center;font-size:12px;color:#888;margin-bottom:16px}
+#conn-dot{display:inline-block;width:9px;height:9px;border-radius:50%;
+          background:#ff4444;vertical-align:middle;margin-right:5px;
+          transition:background .3s}
+#conn-dot.live{background:#00ff88}
+
+/* ── Tabs ─────────────────────────────────────────────────────── */
+.tabs{display:flex;gap:4px;margin-bottom:0;border-bottom:1px solid #2a2a4a;
+      flex-wrap:wrap}
+.tab-btn{background:#16213e;color:#888;border:1px solid #2a2a4a;
+         border-bottom:none;padding:8px 18px;cursor:pointer;
+         font-family:inherit;font-size:13px;border-radius:4px 4px 0 0;
+         transition:color .2s}
+.tab-btn:hover{color:#aad}
+.tab-btn.active{background:#1a1a2e;color:#00d4ff;border-color:#00d4ff;
+                border-bottom:2px solid #00d4ff;font-weight:bold}
+.tab-panel{display:none;padding-top:16px}
+.tab-panel.active{display:block}
+
+/* ── Tables ──────────────────────────────────────────────────── */
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:#16213e;color:#00d4ff;padding:6px 8px;border:1px solid #2a2a4a;
+   text-align:center;position:sticky;top:0;z-index:1;white-space:nowrap}
+td{padding:4px 8px;border:1px solid #2a2a4a;text-align:center;
+   vertical-align:middle;white-space:nowrap}
+.td-left{text-align:left;font-weight:bold;color:#fff;max-width:240px;
+         white-space:normal}
+.td-tourn{text-align:left;font-size:11px;color:#aaa;max-width:180px;
+          white-space:normal}
+.td-ts{font-size:11px;color:#888}
+.td-green{background:#0a4a2a;color:#00ff88;font-weight:bold}
+tr.sep td{border:none;height:3px;padding:0;background:#2a2a4a}
+tr:hover td:not(.sep-td){background:rgba(0,212,255,.04)}
+
+/* ── Bookmaker colours ───────────────────────────────────────── */
+.bk-cc   {color:#e6a800}
+.bk-bf   {color:#ffcc00}
+.bk-b365 {color:#00cc66}
+.bk-bfx  {color:#4d94ff}
+.bk-lv   {color:#cc88ff}
+.bk-pin  {color:#ff8844}
+.bk-sts  {color:#44ddcc}
+.bk-other{color:#ccc}
+
+/* ── Log panels ──────────────────────────────────────────────── */
+.log-grid{display:flex;flex-wrap:wrap;gap:10px}
+.log-panel{flex:1 1 48%;min-width:420px;background:#16213e;
+           border-radius:8px;padding:10px}
+.log-hdr{display:flex;justify-content:space-between;margin-bottom:5px;
+          align-items:center}
+.log-title{color:#00d4ff;font-weight:bold;font-size:13px}
+.log-badge{font-size:11px;font-weight:bold;padding:2px 6px;border-radius:3px}
+.log-badge.run{background:#0a4a2a;color:#00ff88}
+.log-badge.stopped{background:#4a0a0a;color:#ff4444}
+pre.log-body{max-height:200px;overflow-y:auto;font-size:10.5px;
+              background:#0f0f23;padding:8px;border-radius:4px;
+              white-space:pre-wrap;word-break:break-all;color:#ccc}
+
+/* ── KPI cards ───────────────────────────────────────────────── */
+.kpi-strip{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px}
+.kpi{background:#16213e;border-radius:8px;padding:10px 18px;
+     min-width:110px;text-align:center}
+.kpi-label{font-size:11px;color:#888;margin-bottom:4px}
+.kpi-value{font-size:20px;font-weight:bold;color:#00d4ff}
+
+/* ── Chart ──────────────────────────────────────────────────── */
+#chart-wrap{background:#16213e;border-radius:8px;padding:12px;
+             margin-bottom:16px;height:200px;display:none}
+#pnl-chart{max-height:176px}
+
+/* ── Misc ────────────────────────────────────────────────────── */
+.empty{color:#666;padding:20px;text-align:center;font-style:italic}
+.badge{display:inline-block;padding:1px 6px;border-radius:3px;
+       font-size:11px;font-weight:bold}
+.badge-val{background:#0a4a2a;color:#00ff88}
+.badge-arb{background:#4a0a0a;color:#ff6666}
+.badge-pending   {color:#888}
+.badge-placed    {color:#00d4ff}
+.badge-win       {color:#00ff88}
+.badge-loss      {color:#ff4444}
+.badge-aborted   {color:#ff7777}
+
+/* ── Scrollbar ──────────────────────────────────────────────── */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:#0f0f23}
+::-webkit-scrollbar-thumb{background:#2a2a4a;border-radius:3px}
+</style>
+</head>
+<body>
+
+<h1>⚡ Live Betting Dashboard</h1>
+<div id="status-bar">
+  <span id="conn-dot"></span>
+  <span id="conn-label">Connecting…</span>
+  &nbsp;|&nbsp;
+  <span id="last-update">—</span>
+  &nbsp;|&nbsp;
+  <span id="match-count">0 matches</span>
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('logs')">📋 Scraper Logs</button>
+  <button class="tab-btn" onclick="switchTab('odds')">📊 Odds Comparison</button>
+  <button class="tab-btn" onclick="switchTab('opps')">🔥 Opportunities</button>
+  <button class="tab-btn" onclick="switchTab('ledger')">📒 Bet Ledger</button>
+</div>
+
+<!-- Tab 1: Logs -->
+<div id="tab-logs" class="tab-panel active">
+  <div id="logs-content" class="log-grid">
+    <div class="empty">Waiting for first update…</div>
+  </div>
+</div>
+
+<!-- Tab 2: Odds Comparison -->
+<div id="tab-odds" class="tab-panel">
+  <div class="tbl-wrap"><div id="odds-content">
+    <div class="empty">Waiting for first update…</div>
+  </div></div>
+</div>
+
+<!-- Tab 3: Opportunities -->
+<div id="tab-opps" class="tab-panel">
+  <div class="tbl-wrap"><div id="opps-content">
+    <div class="empty">Waiting for first update…</div>
+  </div></div>
+</div>
+
+<!-- Tab 4: Bet Ledger (chart canvas is static — never destroyed) -->
+<div id="tab-ledger" class="tab-panel">
+  <div id="kpi-strip" class="kpi-strip"></div>
+  <div id="chart-wrap"><canvas id="pnl-chart"></canvas></div>
+  <div class="tbl-wrap"><div id="bets-content">
+    <div class="empty">Waiting for first update…</div>
+  </div></div>
+</div>
+
+<script>
+'use strict';
+
+// ── Config ────────────────────────────────────────────────────────────────
+const MARKET_COLS = ['odd_1','odd_X','odd_2','odd_over','odd_under'];
+
+const BK_ORDER = [
+  'coincasino','betfair','bet365','betfair_exchange','lvbet','pinnacle','sts'
+];
+
+const BK_LABELS = {
+  coincasino:      'CoinCasino',
+  betfair:         'Betfair',
+  bet365:          'Bet365',
+  betfair_exchange:'BetfairExch',
+  lvbet:           'LvBet',
+  pinnacle:        'Pinnacle',
+  sts:             'STS',
+};
+
+const BK_CSS = {
+  coincasino:      'bk-cc',
+  betfair:         'bk-bf',
+  bet365:          'bk-b365',
+  betfair_exchange:'bk-bfx',
+  lvbet:           'bk-lv',
+  pinnacle:        'bk-pin',
+  sts:             'bk-sts',
+};
+
+const STATUS_CSS = {
+  PENDING:      'badge-pending',
+  PLACED:       'badge-placed',
+  SETTLED_WIN:  'badge-win',
+  SETTLED_LOSS: 'badge-loss',
+  ABORTED:      'badge-aborted',
+  EXPIRED:      'badge-pending',
+};
+
+// ── Shared state ─────────────────────────────────────────────────────────
+const S = { signals:[], odds:[], logs:{}, bets:[], pnl:{}, activeTab:'logs' };
+let _pnlChart = null;
+
+// ── Tab switching ─────────────────────────────────────────────────────────
+function switchTab(name) {
+  S.activeTab = name;
+  document.querySelectorAll('.tab-btn').forEach((b,i) => {
+    const tabs = ['logs','odds','opps','ledger'];
+    b.classList.toggle('active', tabs[i] === name);
+  });
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  renderAll();
+}
+
+// ── SSE connection ────────────────────────────────────────────────────────
+let _es = null;
+let _reconnectDelay = 1000;
+
+function connectSSE() {
+  _es = new EventSource('/stream');
+
+  _es.onopen = () => {
+    _reconnectDelay = 1000;
+    setConnected(true);
+  };
+
+  _es.onmessage = (ev) => {
+    let data;
+    try { data = JSON.parse(ev.data); } catch(e) { return; }
+    S.signals = data.signals || [];
+    S.odds    = data.odds    || [];
+    S.logs    = data.logs    || {};
+    S.bets    = data.bets    || [];
+    S.pnl     = data.pnl     || {};
+
+    const ts  = data.ts ? data.ts.split('T')[1].slice(0,12) : '—';
+    document.getElementById('last-update').textContent = 'Last push: ' + ts;
+    document.getElementById('match-count').textContent =
+      S.odds.length + ' match' + (S.odds.length !== 1 ? 'es' : '');
+
+    renderAll();
+  };
+
+  _es.onerror = () => {
+    setConnected(false);
+    _es.close();
+    setTimeout(connectSSE, _reconnectDelay);
+    _reconnectDelay = Math.min(_reconnectDelay * 2, 15000);
+  };
+}
+
+function setConnected(ok) {
+  document.getElementById('conn-dot').className = ok ? 'live' : '';
+  document.getElementById('conn-label').textContent = ok ? 'LIVE' : 'Reconnecting…';
+}
+
+// ── Render dispatcher ─────────────────────────────────────────────────────
+function renderAll() {
+  // Always render active tab; pre-render others so tab switch is instant
+  renderLogs();
+  renderOdds();
+  renderOpps();
+  renderLedger();
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+function safeFloat(v) {
+  const f = parseFloat(v);
+  return (isFinite(f) && f > 0) ? f : null;
+}
+
+function fmt2(v) { return v != null ? v.toFixed(2) : ''; }
+
+function age(isoTs) {
+  const s = Math.round((Date.now() - new Date(isoTs)) / 1000);
+  return s + 's';
+}
+
+function shortTs(isoTs) {
+  if (!isoTs) return '';
+  const t = isoTs.includes('T') ? isoTs.split('T')[1] : isoTs;
+  return t.slice(0, 8);
+}
+
+// ── Tab 1: Logs ───────────────────────────────────────────────────────────
+function renderLogs() {
+  const el = document.getElementById('logs-content');
+  const keys = Object.keys(S.logs);
+  if (!keys.length) {
+    el.innerHTML = '<div class="empty">No log data yet — scrapers may be down.</div>';
+    return;
+  }
+  let html = '';
+  for (const cname of keys) {
+    const info = S.logs[cname];
+    const running = info.running;
+    const badgeCls = running ? 'run' : 'stopped';
+    const badgeTxt = running ? 'RUNNING' : 'STOPPED';
+    const borderCol = running ? '#00ff8820' : '#ff444420';
+    html += `
+<div class="log-panel" style="border:1px solid ${borderCol}">
+  <div class="log-hdr">
+    <span class="log-title">${esc(info.label || cname)}</span>
+    <span class="log-badge ${badgeCls}">${badgeTxt}</span>
+  </div>
+  <pre class="log-body">${esc(info.logs || '')}</pre>
+</div>`;
+  }
+  el.innerHTML = html;
+}
+
+// ── Tab 2: Odds Comparison ────────────────────────────────────────────────
+function renderOdds() {
+  const el = document.getElementById('odds-content');
+  const grouped = S.odds;
+  if (!grouped.length) {
+    el.innerHTML = '<div class="empty">No match data available.</div>';
+    return;
+  }
+
+  // Sort by team1
+  const sorted = [...grouped].sort((a,b) => a.team1.localeCompare(b.team1));
+
+  let html = `<table>
+<thead><tr>
+  <th>Match</th><th>Tournament</th><th>Score</th><th>Time</th><th>Status</th>
+  ${MARKET_COLS.map(c=>`<th>${c}</th>`).join('')}
+  <th>Bookmaker</th><th>Updated</th>
+</tr></thead><tbody>`;
+
+  for (const entry of sorted) {
+    const oddsMap = entry.odds || {};
+
+    // Find max per market column (for green highlight)
+    const maxima = {};
+    for (const col of MARKET_COLS) {
+      let best = null;
+      let n = 0;
+      for (const bk of BK_ORDER) {
+        const v = safeFloat(oddsMap[bk]?.[col]);
+        if (v !== null) { n++; if (best === null || v > best) best = v; }
+      }
+      maxima[col] = n > 1 ? best : null; // only highlight if >1 source
+    }
+
+    // One row per bookmaker that has data
+    const bksWithData = BK_ORDER.filter(bk => oddsMap[bk]);
+    if (!bksWithData.length) continue;
+
+    bksWithData.forEach((bk, idx) => {
+      const d = oddsMap[bk];
+      const matchCell = idx === 0
+        ? `<td class="td-left" rowspan="${bksWithData.length}">${esc(entry.team1)} vs ${esc(entry.team2)}</td>
+           <td class="td-tourn" rowspan="${bksWithData.length}">${esc(entry.tournament)}</td>`
+        : '';
+
+      const score = (d.home_score && d.away_score)
+        ? `${d.home_score} – ${d.away_score}` : '';
+
+      const marketCells = MARKET_COLS.map(col => {
+        const v = safeFloat(d[col]);
+        const isBest = v !== null && maxima[col] !== null && Math.abs(v - maxima[col]) < 1e-9;
+        return `<td class="${isBest ? 'td-green' : ''}">${v != null ? fmt2(v) : ''}</td>`;
+      }).join('');
+
+      const score2 = entry.match_scores?.[bk];
+      const bkLabel = (BK_LABELS[bk] || bk) + (score2 != null ? ` (${score2.toFixed(0)}%)` : '');
+
+      html += `<tr>
+  ${matchCell}
+  <td>${esc(score)}</td>
+  <td>${esc(d.match_time || '')}</td>
+  <td>${esc(d.match_status || '')}</td>
+  ${marketCells}
+  <td class="${BK_CSS[bk] || 'bk-other'}">${esc(bkLabel)}</td>
+  <td class="td-ts">${shortTs(d.timestamp)}</td>
+</tr>`;
+    });
+
+    html += '<tr class="sep"><td colspan="100"></td></tr>';
+  }
+
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+// ── Tab 3: Opportunities ──────────────────────────────────────────────────
+function renderOpps() {
+  const el = document.getElementById('opps-content');
+  const sigs = S.signals;
+
+  if (!sigs.length) {
+    el.innerHTML = '<div class="empty">No active signals right now.</div>';
+    return;
+  }
+
+  let html = `<table>
+<thead><tr>
+  <th>Type</th><th>Match</th><th>Tournament</th>
+  <th>Bookmaker / Legs</th><th>Market</th>
+  <th>Edge / Profit</th><th>BK Odds</th><th>Fair Odds</th><th>Age</th>
+</tr></thead><tbody>`;
+
+  for (const s of sigs) {
+    const match = `${esc(s.team1||'')} vs ${esc(s.team2||'')}`;
+    if (s.type === 'VALUE') {
+      html += `<tr style="background:#0a4a2a0d">
+  <td><span class="badge badge-val">VALUE</span></td>
+  <td class="td-left">${match}</td>
+  <td class="td-tourn">${esc(s.tournament||'')}</td>
+  <td class="${BK_CSS[s.bookmaker]||'bk-other'}">${esc(BK_LABELS[s.bookmaker]||s.bookmaker||'')}</td>
+  <td>${esc(s.market||'')}</td>
+  <td style="color:#00ff88;font-weight:bold">+${(+s.edge_pct).toFixed(2)}%</td>
+  <td>${s.bookmaker_odds ? (+s.bookmaker_odds).toFixed(3) : ''}</td>
+  <td>${s.fair_odds ? (+s.fair_odds).toFixed(3) : ''}</td>
+  <td class="td-ts">${age(s.timestamp)}</td>
+</tr>`;
+    } else { // ARB
+      const legs = (s.legs||[]).map(l=>`${BK_LABELS[l.bookmaker]||l.bookmaker}@${(+l.odds).toFixed(2)}`).join(', ');
+      const mkts = (s.legs||[]).map(l=>l.market).join(' / ');
+      html += `<tr style="background:#4a0a0a22">
+  <td><span class="badge badge-arb">ARB</span></td>
+  <td class="td-left">${match}</td>
+  <td class="td-tourn">${esc(s.tournament||'')}</td>
+  <td style="font-size:11px">${esc(legs)}</td>
+  <td style="font-size:11px">${esc(mkts)}</td>
+  <td style="color:#ff6666;font-weight:bold">+${(+s.guaranteed_profit_pct).toFixed(2)}%</td>
+  <td>—</td><td>—</td>
+  <td class="td-ts">${age(s.timestamp)}</td>
+</tr>`;
+    }
+  }
+
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+// ── Tab 4: Bet Ledger ─────────────────────────────────────────────────────
+function renderLedger() {
+  const pnl  = S.pnl;
+  const bets = S.bets;
+
+  // KPI cards
+  const kpiEl = document.getElementById('kpi-strip');
+  const totalPnl = +(pnl.total_pnl || 0);
+  const roi      = +(pnl.roi_pct   || 0);
+  const pnlColor  = totalPnl >= 0 ? '#00ff88' : '#ff4444';
+  const roiColor  = roi      >= 0 ? '#00ff88' : '#ff4444';
+  kpiEl.innerHTML = [
+    kpi('Total Bets',   pnl.total_bets   ?? 0),
+    kpi('Open',         pnl.open_bets    ?? 0),
+    kpi('Wins',         pnl.wins         ?? 0, '#00ff88'),
+    kpi('Losses',       pnl.losses       ?? 0, '#ff4444'),
+    kpi('Win Rate',     ((pnl.win_rate_pct ?? 0).toFixed(1)) + '%'),
+    kpi('Staked',       '€' + ((pnl.total_staked ?? 0).toFixed(2))),
+    kpi('P&L',          (totalPnl >= 0 ? '+' : '') + '€' + totalPnl.toFixed(2), pnlColor),
+    kpi('ROI',          (roi >= 0 ? '+' : '') + roi.toFixed(1) + '%', roiColor),
+  ].join('');
+
+  // P&L bar chart
+  const daily = pnl.daily_pnl || [];
+  const chartWrap = document.getElementById('chart-wrap');
+  chartWrap.style.display = daily.length ? 'block' : 'none';
+  if (daily.length) updatePnlChart(daily);
+
+  // Bets table
+  const betsEl = document.getElementById('bets-content');
+  if (!bets.length) {
+    betsEl.innerHTML = '<div class="empty">No bets recorded yet.</div>';
+    return;
+  }
+
+  let html = `<table>
+<thead><tr>
+  <th>Created</th><th>Match</th><th>Market</th><th>Outcome</th>
+  <th>Stake (€)</th><th>Req. Price</th><th>Acc. Price</th>
+  <th>Edge %</th><th>Type</th><th>Status</th>
+</tr></thead><tbody>`;
+
+  for (const b of bets.slice(0, 100)) {
+    const ts = (b.created_at || '').replace('T',' ').slice(0,19);
+    const match = `${esc(b.team1||'')} vs ${esc(b.team2||'')}`;
+    const st = b.status || '';
+    const stCss = STATUS_CSS[st] || '';
+    html += `<tr>
+  <td class="td-ts">${ts}</td>
+  <td class="td-left">${match}</td>
+  <td>${esc(b.market||'')}</td>
+  <td>${esc(b.outcome||'')}</td>
+  <td>${(+(b.stake_eur||0)).toFixed(2)}</td>
+  <td>${(+(b.min_price||0)).toFixed(4)}</td>
+  <td>${b.accepted_price != null ? (+b.accepted_price).toFixed(4) : '—'}</td>
+  <td>${(+(b.edge_pct||0)) > 0 ? '+' : ''}${(+(b.edge_pct||0)).toFixed(1)}%</td>
+  <td>${esc(b.signal_type||'')}</td>
+  <td class="${stCss}" style="font-weight:bold">${esc(st)}</td>
+</tr>`;
+  }
+
+  html += '</tbody></table>';
+  betsEl.innerHTML = html;
+}
+
+function kpi(label, value, color='#00d4ff') {
+  return `<div class="kpi">
+  <div class="kpi-label">${esc(label)}</div>
+  <div class="kpi-value" style="color:${color}">${esc(String(value))}</div>
+</div>`;
+}
+
+function updatePnlChart(daily) {
+  const canvas = document.getElementById('pnl-chart');
+  if (!canvas) return;
+  const labels = daily.map(d => d.day);
+  const values = daily.map(d => +(d.pnl || 0));
+  const colors = values.map(v => v >= 0 ? '#00ff88' : '#ff4444');
+
+  const cfg = {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Daily P&L (EUR)',
+        data:  values,
+        backgroundColor: colors,
+        borderRadius: 3,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 300 },
+      plugins: {
+        legend: { labels: { color: '#aaa', font: { family: 'Consolas' } } },
+      },
+      scales: {
+        x: { ticks: { color: '#888' }, grid: { color: '#2a2a4a' } },
+        y: { ticks: { color: '#888' }, grid: { color: '#2a2a4a' }, beginAtZero: true },
+      },
+    },
+  };
+
+  if (_pnlChart) {
+    _pnlChart.data.labels = labels;
+    _pnlChart.data.datasets[0].data   = values;
+    _pnlChart.data.datasets[0].backgroundColor = colors;
+    _pnlChart.update('active');
+  } else {
+    // Set dark background for Chart.js canvas
+    Chart.defaults.color       = '#888';
+    Chart.defaults.borderColor = '#2a2a4a';
+    _pnlChart = new Chart(canvas, cfg);
+  }
+}
+
+// ── Boot ─────────────────────────────────────────────────────────────────
+connectSSE();
+</script>
+</body>
+</html>
+
