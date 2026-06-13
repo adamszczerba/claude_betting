@@ -12,7 +12,7 @@ Ultimate goal:
 - betting bot placing bets based on player commands
 
 
-software modules:
+Software modules:
 # each modele have own interface and documentation. It is described in .md file in their own directory. Thant .md handle both info for human and for AI agent.
 - data collector (scrap bookmaker data as timeseries and saves down to db)
 - database (match's timeseries)
@@ -32,4 +32,8 @@ software modules:
 # todo: data collectors and executor should be executed in different docker containers to use different vpns
 # todo: software should be open for more bookmakers
 # todo: it should be open for new kind of bets. for example for football corners, cards, handicaps
+
+First version we are implementing:
+only live betting, only football
+execution only on conincasino, other bookmakers are for signal generation and value bet detection, but not for execution.
 
