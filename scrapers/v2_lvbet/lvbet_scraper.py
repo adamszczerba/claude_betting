@@ -30,7 +30,9 @@ from typing import Dict, List
 _here = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _here)                                               # Docker: /app
 sys.path.insert(0, os.path.join(_here, "..", "v2_coincasino"))          # local dev
-from sync_clock import sleep_until_next_tick  # noqa: E402
+from sync_clock import sleep_until_next_tick
+
+import atexit  # noqa: E402
 
 import requests
 
@@ -121,15 +123,49 @@ CSV_COLUMNS = [
 ]
 
 
+
+
+# Module-level file handle cache: path -> (file_handle, csv_writer)
+_open_handles: dict = {}
+
+
 def _write_header_if_needed(path: str) -> None:
     if not os.path.exists(path):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", newline="") as f:
             csv.writer(f).writerow(CSV_COLUMNS)
 
 
 def _append_row(path: str, row: list) -> None:
-    with open(path, "a", newline="") as f:
-        csv.writer(f).writerow(row)
+    """Append a row, reusing an open file handle if available."""
+    if path in _open_handles:
+        f, w = _open_handles[path]
+    else:
+        f = open(path, "a", newline="", buffering=1)
+        w = csv.writer(f)
+        _open_handles[path] = (f, w)
+    w.writerow(row)
+
+
+def _flush_open_handles() -> None:
+    """Flush all open file handles (call at end of each poll cycle)."""
+    for f, _ in _open_handles.values():
+        try:
+            f.flush()
+        except Exception:
+            pass
+
+
+def _close_open_handles() -> None:
+    """Close all open file handles (call on shutdown)."""
+    for f, _ in _open_handles.values():
+        try:
+            f.flush()
+            f.close()
+        except Exception:
+            pass
+    _open_handles.clear()
+
 
 
 # ---------------------------------------------------------------------------
@@ -357,6 +393,7 @@ def run(
 ) -> None:
     client = BetbyClient()
     writer = MatchCSVWriter(output_dir)
+    atexit.register(_close_open_handles)
 
     log.info("LVBet live SOCCER odds scraper started")
     log.info("  output dir : %s", os.path.abspath(output_dir))
@@ -387,6 +424,7 @@ def run(
         except Exception:
             log.exception("Unexpected error in cycle %d", cycle)
 
+        _flush_open_handles()
         sleep_until_next_tick(interval)
 
 

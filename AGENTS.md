@@ -1,5 +1,8 @@
 # Betting Scraper Project Guidelines
 
+## rules
+never add .csv to git, keep all csv in match_database, if you need some for testing, clean it later 
+
 ## handling knowledge in .md files
 Top level software architecture is described in ARCHITECTURE.md. Keep it updated. For more details on software modules, see their respective .md files in their directories.
 Decisions with explanation are in DECISIONS.md. Use it to answer questions yourself. Update it when you make decision.
@@ -8,8 +11,6 @@ API between main system components is in API_CONTRACTS.md. Trust it until you ha
 Use TASKS.md to track your work and progress. Update it when you start working on something or finish it.
 
 ##
-
-
 ## env and run
 
 
@@ -17,8 +18,9 @@ Use TASKS.md to track your work and progress. Update it when you start working o
 At the end of each task, ask if run whole system
 
 ## version control
-- use git, add created files 
-- make commits for each meaningful change, msg starts with '[AGENT]'
+- **Always `git add` all new and modified files after completing a change** — run `git add -A` or `git add .` before committing
+- Only `match_database/` is excluded from tracking (via `.gitignore`); everything else must be committed
+- Make commits for each meaningful change, msg starts with '[AGENT]'
 
 ## architecture
 ## dev rules

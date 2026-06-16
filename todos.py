@@ -1,1 +1,0 @@
-# there is a mechanism to refresh betfair page each few second to always have all matches. we cannot afford to have missing data feed during that period
