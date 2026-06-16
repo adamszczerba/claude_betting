@@ -7,13 +7,14 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Python deps
-RUN pip install --no-cache-dir requests
+RUN pip install --no-cache-dir requests redis
 
 WORKDIR /app
 
 # Copy scraper code
-COPY v2_sts/sts_scraper.py /app/sts_scraper.py
-COPY v2_coincasino/sync_clock.py /app/sync_clock.py
+COPY scrapers/v2_sts/sts_scraper.py /app/sts_scraper.py
+COPY scrapers/v2_coincasino/sync_clock.py /app/sync_clock.py
+COPY scrapers/shared/ /app/scrapers/shared/
 
 # Copy entrypoint
 COPY docker/sts/entrypoint.sh /entrypoint.sh

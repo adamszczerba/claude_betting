@@ -10,7 +10,8 @@ RUN pip install --no-cache-dir \
         fastapi \
         uvicorn[standard] \
         rapidfuzz \
-        pyyaml
+        pyyaml \
+        redis
 
 WORKDIR /app
 
@@ -19,12 +20,11 @@ COPY analytics/       /app/analytics/
 COPY decisions/       /app/decisions/
 COPY ledger/          /app/ledger/
 COPY orchestrator/    /app/orchestrator/
-COPY dashboard/data_service.py  /app/dashboard/data_service.py
-COPY dashboard/matcher.py       /app/dashboard/matcher.py
-COPY dashboard/__init__.py      /app/dashboard/__init__.py
-COPY dashboard/index.html       /app/dashboard/index.html
-COPY v2_coincasino/sync_clock.py /app/v2_coincasino/sync_clock.py
-COPY v2_coincasino/__init__.py   /app/v2_coincasino/__init__.py
+COPY signals/         /app/signals/
+COPY dashboard/       /app/dashboard/
+COPY scrapers/shared/ /app/scrapers/shared/
+COPY scrapers/v2_coincasino/sync_clock.py /app/v2_coincasino/sync_clock.py
+COPY scrapers/v2_coincasino/__init__.py   /app/v2_coincasino/__init__.py
 
 RUN mkdir -p /app/ledger /app/match_database
 

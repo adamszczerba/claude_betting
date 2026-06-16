@@ -1,0 +1,28 @@
+# Match database - scraped data, not source code
+match_database/
+
+# Scraper local CSV databases
+scrapers/*/db/
+
+# Outdated scrapers sample data
+outdated_scrapers/betfair/db/
+outdated_scrapers/betfair/*sample.json
+outdated_scrapers/betfair/*.html
+
+# Generated data files
+ledger/*.db
+ledger/*.db-wal
+ledger/*.db-shm
+
+# Scraper debug dumps
+scrapers/v2_coincasino/coincasino_livesports_page
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+
+# OS
+.DS_Store
+Thumbs.db

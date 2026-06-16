@@ -30,8 +30,9 @@ ip -6 rule add not fwmark 51820 table 51820 2>/dev/null || true
 ip -6 rule add table main suppress_prefixlength 0 2>/dev/null || true
 if [ -n "$WG_DNS" ]; then
     DNS1=$(echo "$WG_DNS" | cut -d',' -f1 | tr -d ' ')
-    echo "nameserver $DNS1" > /etc/resolv.conf
-    echo "[entrypoint] DNS set to $DNS1"
+    echo "nameserver 127.0.0.11" > /etc/resolv.conf
+    echo "nameserver $DNS1" >> /etc/resolv.conf
+    echo "[entrypoint] DNS: Docker (127.0.0.11) primary, VPN ($DNS1) fallback"
 fi
 echo "[entrypoint] WireGuard tunnel active:"
 wg show wg0

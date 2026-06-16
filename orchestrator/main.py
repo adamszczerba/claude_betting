@@ -191,10 +191,32 @@ def _logs_loop() -> None:
 # Imports (deferred so we can log import errors gracefully)
 # ---------------------------------------------------------------------------
 
+def _fetch_rows():
+    """Fetch odds rows from Redis streams, falling back to CSV scan."""
+    try:
+        from scrapers.shared.stream_consumer import read_latest_from_streams, is_redis_available
+        if is_redis_available():
+            rows = read_latest_from_streams()
+            if rows:
+                return rows
+    except Exception:
+        pass
+    return scan_today(db_root=DB_ROOT)
+
+
 def _import_modules():
     global scan_today, build_grouped_table, weighted_consensus
     global scan_value, scan_arb, RiskManager, SignalRouter
     global Ledger, _load_config
+
+    from dashboard.data_service import scan_today
+    from dashboard.matcher import build_grouped_table
+    from analytics.consensus import weighted_consensus
+    from analytics.value import scan_value
+    from analytics.arbitrage import scan_arb
+    from decisions.risk_manager_v2 import RiskManager, _load_config
+    from decisions.signal_router import SignalRouter
+    from ledger.ledger import Ledger
 
 
 # ---------------------------------------------------------------------------
@@ -202,7 +224,7 @@ def _import_modules():
 # ---------------------------------------------------------------------------
 
 def _poll_loop(ledger: "Ledger", risk: "RiskManager", router: "SignalRouter") -> None:
-    from scrapers.v2_coincasino import sleep_until_next_tick
+    from v2_coincasino.sync_clock import sleep_until_next_tick
 
     log.info("Poll loop started (interval=%.1fs, db_root=%s)", POLL_INTERVAL, DB_ROOT)
 
@@ -217,7 +239,7 @@ def _poll_loop(ledger: "Ledger", risk: "RiskManager", router: "SignalRouter") ->
 def _run_cycle(ledger: "Ledger", risk: "RiskManager", router: "SignalRouter") -> None:
     now = datetime.datetime.now()
 
-    rows = scan_today(db_root=DB_ROOT)
+    rows = _fetch_rows()
 
     # Staleness filter
     cfg = _load_config()

@@ -11,13 +11,14 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 # Python deps
-RUN pip install --no-cache-dir requests
+RUN pip install --no-cache-dir requests redis
 
 WORKDIR /app
 
 # Copy scraper code
-COPY v2_coincasino/coincasino_scraper.py /app/coincasino_scraper.py
-COPY v2_coincasino/sync_clock.py /app/sync_clock.py
+COPY scrapers/v2_coincasino/coincasino_scraper.py /app/coincasino_scraper.py
+COPY scrapers/v2_coincasino/sync_clock.py /app/sync_clock.py
+COPY scrapers/shared/ /app/scrapers/shared/
 
 # Copy VPN config (will be overridden by volume mount if desired)
 COPY vpns/coincasino/*.conf /etc/wireguard/wg0.conf
