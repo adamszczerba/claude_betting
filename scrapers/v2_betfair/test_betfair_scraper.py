@@ -5,7 +5,7 @@ Run:
     python -m pytest v2_betfair/test_betfair_scraper.py -v
 """
 import unittest
-from v2_betfair.betfair_scraper import fractional_to_decimal
+from scrapers.v2_betfair.betfair_scraper import fractional_to_decimal
 
 
 class TestFractionalToDecimal(unittest.TestCase):

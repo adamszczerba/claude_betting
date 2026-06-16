@@ -5,7 +5,7 @@ Run:
     python -m pytest v2_sts/test_sts_scraper.py -v
 """
 import unittest
-from v2_sts.sts_scraper import (
+from scrapers.v2_sts.sts_scraper import (
     _format_odd,
     _extract_match_status,
     parse_soccer_event,

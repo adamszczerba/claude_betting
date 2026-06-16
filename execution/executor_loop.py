@@ -22,7 +22,6 @@ import datetime
 import logging
 import os
 import sys
-import time
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
@@ -53,8 +52,7 @@ def _build_executor():
 
 def main() -> None:
     from ledger.ledger import Ledger
-    from execution.base import PriceDriftError, ExecutionError
-    from v2_coincasino.sync_clock import sleep_until_next_tick
+    from scrapers.v2_coincasino import sleep_until_next_tick
 
     ledger   = Ledger(LEDGER_PATH)
     executor = _build_executor()
@@ -72,7 +70,7 @@ def main() -> None:
 
 
 def _process_pending(ledger, executor) -> None:
-    from execution.base import PriceDriftError, ExecutionError
+    from execution.base import PriceDriftError
     from decisions.signal_router import BetOrder
 
     pending = ledger.get_pending_orders()

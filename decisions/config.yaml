@@ -7,12 +7,34 @@ kelly_fraction: 0.25          # ¼-Kelly (conservative)
 value_thresholds:
   main_markets: 3.0           # % minimum edge for odd_1, odd_X, odd_2
   niche_markets: 5.0          # % minimum edge for odd_over, odd_under
+  prematch_markets: 2.0       # % — prematch (tighter margins)
+
+# ── Signal Fusion ──
+signal_weights:
+  comparator: 0.40
+  ml: 0.30
+  web_search: 0.15
+  live_data: 0.15
+
+min_signal_sources: 2         # at least N independent signal types must agree
+min_composite_confidence: 0.6
+
+# ── ML Model ──
+ml:
+  enabled: false               # toggle ML signal provider
+  min_confidence: 0.7          # minimum model confidence to consider signal
+  model_registry_path: "ml/models/"
+  retrain_interval_days: 7
 
 risk:
+  kill_switch: false           # master OFF switch — halts ALL betting when true
+  max_daily_loss_eur: 200.0    # halt betting once realized loss today reaches this
+  staleness_sec: 10            # halt if no fresh odds within this window (safety)
   max_stake_eur: 50.0
   min_stake_eur: 1.0
   max_concurrent_bets: 3
   max_exposure_per_match_eur: 100.0
+  max_exposure_per_sport_eur: 300.0
   # No bets placed when match_status is one of these
   suspend_on_status:
     - "HT"
@@ -44,4 +66,45 @@ execution:
   price_drift_threshold: 0.02
   # Randomise stake by ±this fraction to appear more human
   stake_jitter_fraction: 0.02
+
+# ── Human Approval ──
+approval:
+  enabled: false
+  auto_approve: true           # bypass gate
+  stake_threshold_eur: 25.0    # require approval above this
+  min_confidence_auto: 0.8     # auto-approve above this confidence
+  expiry_sec: 120              # orders expire if not approved within N sec
+
+# ── Sports ──
+sports:
+  enabled: ["football"]        # add "tennis", "basketball", "hockey" as ready
+  football:
+    leagues:
+      whitelist: []
+      blacklist: ["Esoccer", "Virtual"]
+  tennis:
+    leagues:
+      whitelist: []
+      blacklist: []
+  basketball:
+    leagues:
+      whitelist: []
+      blacklist: []
+  hockey:
+    leagues:
+      whitelist: []
+      blacklist: []
+
+# ── Data Maintenance ──
+maintenance:
+  retention_days: 365
+  audit_interval_days: 7
+  auto_purge: false
+
+# ── Signal Bus ──
+signal_bus:
+  backend: "redis"             # "redis" | "memory" | "auto"
+  host: "signal-bus"
+  port: 6379
+  signal_ttl_sec: 300
 

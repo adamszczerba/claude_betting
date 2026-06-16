@@ -5,7 +5,7 @@ Run:
     python -m pytest v2_betfair_exchange/test_betfair_exchange_scraper.py -v
 """
 import unittest
-from v2_betfair_exchange.betfair_exchange_scraper import average_back_lay, _parse_decimal
+from scrapers.v2_betfair_exchange.betfair_exchange_scraper import average_back_lay, _parse_decimal
 
 
 class TestAverageBackLay(unittest.TestCase):

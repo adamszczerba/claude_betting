@@ -5,7 +5,7 @@ Run:
     python -m pytest v2_pinnacle/test_pinnacle_scraper.py -v
 """
 import unittest
-from v2_pinnacle.pinnacle_scraper import (
+from scrapers.v2_pinnacle.pinnacle_scraper import (
     _format_price,
     parse_matchup_data,
     merge_odds_into_events,

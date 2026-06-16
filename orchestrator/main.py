@@ -196,22 +196,13 @@ def _import_modules():
     global scan_value, scan_arb, RiskManager, SignalRouter
     global Ledger, _load_config
 
-    from dashboard.data_service          import scan_today
-    from dashboard.matcher               import build_grouped_table
-    from analytics.consensus             import weighted_consensus
-    from analytics.value                 import scan_value
-    from analytics.arbitrage             import scan_arb
-    from decisions.risk_manager          import RiskManager, _load_config
-    from decisions.signal_router         import SignalRouter
-    from ledger.ledger                   import Ledger
-
 
 # ---------------------------------------------------------------------------
 # Poll loop (runs in a background thread)
 # ---------------------------------------------------------------------------
 
 def _poll_loop(ledger: "Ledger", risk: "RiskManager", router: "SignalRouter") -> None:
-    from v2_coincasino.sync_clock import sleep_until_next_tick
+    from scrapers.v2_coincasino import sleep_until_next_tick
 
     log.info("Poll loop started (interval=%.1fs, db_root=%s)", POLL_INTERVAL, DB_ROOT)
 

@@ -5,7 +5,7 @@ Run:
     python -m pytest v2_bet365/test_bet365_scraper.py -v
 """
 import unittest
-from v2_bet365.bet365_scraper import parse_decimal_odds
+from scrapers.v2_bet365.bet365_scraper import parse_decimal_odds
 
 
 class TestParseDecimalOdds(unittest.TestCase):

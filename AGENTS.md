@@ -1,6 +1,29 @@
 # Betting Scraper Project Guidelines
 
-This project scrapes live soccer betting odds from multiple bookmakers (Betfair, Bet365, CoinCasino, Betfair Exchange) using isolated Docker containers with WireGuard VPN tunneling. The goal is value bets detection.
+## handling knowledge in .md files
+Top level software architecture is described in ARCHITECTURE.md. Keep it updated. For more details on software modules, see their respective .md files in their directories.
+Decisions with explanation are in DECISIONS.md. Use it to answer questions yourself. Update it when you make decision.
+Problem domain and motivation is in DOMAIN.md. Use it to understand the goal and motivation of the project. Update it when you have new insights about the domain.
+API between main system components is in API_CONTRACTS.md. Trust it until you have clear evidence that it is wrong. Update it when you make decision about API change.
+Use TASKS.md to track your work and progress. Update it when you start working on something or finish it.
+
+##
+
+
+## env and run
+
+
+## testing
+At the end of each task, ask if run whole system
+
+## version control
+- use git, add created files 
+- make commits for each meaningful change, msg starts with '[AGENT]'
+
+## architecture
+## dev rules
+
+
 
 ## Architecture
 
@@ -88,8 +111,9 @@ timestamp,match_time,match_status,home_score,away_score,odd_1,odd_X,odd_2,total_
 
 ### Clock Synchronization Pattern
 **All scrapers MUST use synchronized polling** via `sync_clock.py`:
+
 ```python
-from v2_coincasino.sync_clock import sleep_until_next_tick
+from scrapers.v2_coincasino import sleep_until_next_tick
 
 while True:
     events = scraper.fetch_events()

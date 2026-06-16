@@ -5,7 +5,7 @@ Run:
     python -m pytest v2_lvbet/test_lvbet_scraper.py -v
 """
 import unittest
-from v2_lvbet.lvbet_scraper import compute_match_time, parse_soccer_events
+from scrapers.v2_lvbet.lvbet_scraper import compute_match_time, parse_soccer_events
 
 
 class TestComputeMatchTime(unittest.TestCase):

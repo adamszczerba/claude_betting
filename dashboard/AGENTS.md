@@ -1,0 +1,1 @@
+ui for player to observe state and approve suggested bets
