@@ -31,6 +31,8 @@ sys.path.insert(0, _here)                                               # Docker
 sys.path.insert(0, os.path.join(_here, "..", "v2_coincasino"))          # local dev
 from sync_clock import sleep_until_next_tick
 
+from scrapers.shared.stream_publisher import publish_snapshot
+
 import atexit  # noqa: E402
 
 import requests
@@ -441,8 +443,11 @@ def run(
             merge_odds_into_events(events, odds_list)
 
             # Write to CSV
-            for ev in events.values():
+            event_list = list(events.values())
+            for ev in event_list:
                 writer.write(ev)
+
+            publish_snapshot(BOOKMAKER_TAG, event_list)
 
             n_total = len(events)
             n_with_odds = sum(1 for e in events.values() if e["odd_1"])

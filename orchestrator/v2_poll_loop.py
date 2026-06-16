@@ -55,7 +55,8 @@ class OrchestratorV2:
         self._db_root = db_root
 
         # Initialize components
-        self._bus = SignalBus(backend=signal_bus_backend)
+        redis_host = os.environ.get("REDIS_HOST", "localhost")
+        self._bus = SignalBus(backend=signal_bus_backend, host=redis_host)
         self._ledger = Ledger(ledger_path)
         self._risk = RiskManager(self._config)
         self._approval = ApprovalGate(self._config)

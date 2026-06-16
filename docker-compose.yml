@@ -22,6 +22,8 @@ services:
       - ./match_database/coincasino:/app/db
       # Mount VPN config (swap configs without rebuilding)
       - ./vpns/coincasino/warszawa1_protonvpn-PL-88.conf:/etc/wireguard/wg0.conf:ro
+    environment:
+      - REDIS_HOST=redis
     restart: unless-stopped
 
   # ───────────────────────────────────────────────────────────────────────
@@ -45,6 +47,8 @@ services:
       - ./vpns/betfair/manchester1_protonvpn-UK-232.conf:/etc/wireguard/wg0.conf:ro
     # Chrome needs more shared memory
     shm_size: "2g"
+    environment:
+      - REDIS_HOST=redis
     restart: unless-stopped
 
   # ───────────────────────────────────────────────────────────────────────
@@ -69,6 +73,8 @@ services:
       - ./vpns/betfair/manchester1_protonvpn-UK-232.conf:/etc/wireguard/wg0.conf:ro
     # Chrome needs more shared memory
     shm_size: "2g"
+    environment:
+      - REDIS_HOST=redis
     restart: unless-stopped
 
   # ───────────────────────────────────────────────────────────────────────
@@ -92,6 +98,8 @@ services:
       - ./vpns/betfair/manchester1_protonvpn-UK-232.conf:/etc/wireguard/wg0.conf:ro
     # Chrome needs more shared memory
     shm_size: "2g"
+    environment:
+      - REDIS_HOST=redis
     restart: unless-stopped
 
   # ───────────────────────────────────────────────────────────────────────
@@ -111,6 +119,8 @@ services:
     volumes:
       - ./match_database/pinnacle:/app/db
       - ./vpns/pinnacle/manchester1_protonvpn-UK-232.conf:/etc/wireguard/wg0.conf:ro
+    environment:
+      - REDIS_HOST=redis
     restart: unless-stopped
 
   # ───────────────────────────────────────────────────────────────────────
@@ -124,6 +134,8 @@ services:
     container_name: scraper-lvbet
     volumes:
       - ./match_database/lvbet:/app/db
+    environment:
+      - REDIS_HOST=redis
     restart: unless-stopped
 
   # ───────────────────────────────────────────────────────────────────────
@@ -137,6 +149,8 @@ services:
     container_name: scraper-sts
     volumes:
       - ./match_database/sts:/app/db
+    environment:
+      - REDIS_HOST=redis
     restart: unless-stopped
 
   # ───────────────────────────────────────────────────────────────────────
@@ -158,6 +172,20 @@ services:
       - LEDGER_PATH=/app/ledger/bets.db
       - POLL_INTERVAL=2.0
       - ORCHESTRATOR_PORT=8051
+      - REDIS_HOST=redis
+    restart: unless-stopped
+
+  # ───────────────────────────────────────────────────────────────────────
+  # Redis — odds stream + signal bus backend
+  # ───────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     restart: unless-stopped
 
   # ───────────────────────────────────────────────────────────────────────
@@ -188,3 +216,5 @@ services:
       - CC_SESSION_PATH=/app/cc_session.json
     restart: unless-stopped
 
+volumes:
+  redis-data:

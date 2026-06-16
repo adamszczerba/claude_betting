@@ -8,3 +8,4 @@ fastapi
 uvicorn[standard]
 playwright
 playwright-stealth
+redis>=5.0

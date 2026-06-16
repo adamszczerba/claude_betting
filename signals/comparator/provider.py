@@ -40,9 +40,8 @@ class ComparatorSignalProvider:
         self._db_root = db_root
 
     def scan(self) -> List[Signal]:
-        """Run full scan: read CSVs → consensus → value/arb → publish signals."""
+        """Run full scan: read odds (Redis or CSV) → consensus → value/arb → publish signals."""
         try:
-            from dashboard.data_service import scan_today
             from dashboard.matcher import build_grouped_table
             from analytics.consensus import weighted_consensus
             from analytics.value import scan_value
@@ -51,9 +50,10 @@ class ComparatorSignalProvider:
             log.error("Import error in comparator provider: %s", exc)
             return []
 
-        rows = scan_today(db_root=self._db_root)
+        # Try Redis streams first, fall back to CSV scan
+        rows = self._fetch_rows()
         if not rows:
-            log.debug("No CSV rows found for today.")
+            log.debug("No odds rows found (Redis or CSV).")
             return []
 
         grouped = build_grouped_table(rows)
@@ -78,6 +78,32 @@ class ComparatorSignalProvider:
                  len([s for s in signals if "ARB" not in s.dedupe_key]),
                  len([s for s in signals if "ARB" in s.dedupe_key]))
         return signals
+
+    def _fetch_rows(self) -> list:
+        """Fetch latest odds rows from Redis streams, falling back to CSV scan."""
+        # Try Redis first
+        try:
+            from scrapers.shared.stream_consumer import read_latest_from_streams, is_redis_available
+            if is_redis_available():
+                rows = read_latest_from_streams()
+                if rows:
+                    log.info("Comparator: read %d rows from Redis streams", len(rows))
+                    return rows
+                log.debug("Redis available but no stream data yet — falling back to CSV")
+            else:
+                log.debug("Redis unavailable — falling back to CSV scan")
+        except Exception as exc:
+            log.warning("Redis stream read failed (%s) — falling back to CSV", exc)
+
+        # Fallback: scan CSV files
+        try:
+            from dashboard.data_service import scan_today
+            rows = scan_today(db_root=self._db_root)
+            log.info("Comparator: read %d rows from CSV files", len(rows))
+            return rows
+        except Exception as exc:
+            log.error("CSV scan failed: %s", exc)
+            return []
 
     def _value_to_signal(self, val) -> Signal:
         """Convert analytics ValueSignal → bus Signal."""

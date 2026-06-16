@@ -27,6 +27,8 @@ import requests
 
 from sync_clock import sleep_until_next_tick
 
+from scrapers.shared.stream_publisher import publish_snapshot
+
 import atexit
 
 # ---------------------------------------------------------------------------
@@ -610,6 +612,8 @@ def run(
 
             for ev in events:
                 writer.write(ev)
+
+            publish_snapshot(BOOKMAKER_TAG, events)
 
             n_total = len(events)
             n_with_odds = sum(1 for e in events if e["odd_1"])

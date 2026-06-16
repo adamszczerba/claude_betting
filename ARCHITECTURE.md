@@ -56,44 +56,38 @@ End-to-end autonomous betting system that:
                                        [Executor]
 ``
 
-## 1.3 Target Pipeline (v2 -- Planned)
+## 1.3 Target Pipeline (v2 -- Live)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        DATA COLLECTION LAYER                        │
 │                                                                     │
-│  [Scraper x N]  ──►  match_database/<sport>/<bk>/<date>/*.csv       │
-│  (per bookmaker,     (append-only, real-time, sync-clock)           │
-│   per sport,                                                      │
-│   isolated VPN)       ┌──────────────────────────────────┐         │
-│                       │   Historical Timeseries DB        │         │
-│                       │   (PostgreSQL / InfluxDB)         │         │
-│                       │   - odds movement                 │         │
-│                       │   - match events (goals, cards)   │         │
-│                       │   - settlement results            │         │
-│                       └──────────┬───────────────────────┘         │
-└──────────────────────────────────┼──────────────────────────────────┘
-                                   │
-┌──────────────────────────────────┼──────────────────────────────────┐
-│                     SIGNAL PROVIDER LAYER                            │
-│                                  │                                   │
-│  ┌──────────────┐  ┌────────────┴───┐  ┌──────────────────┐        │
-│  │  Comparator   │  │  ML / Time-    │  │  Web Search      │        │
-│  │  Signal       │  │  series Signal │  │  Signal          │        │
-│  │  Provider     │  │  Provider      │  │  Provider        │        │
-│  │              │  │                │  │                  │        │
-│  │ Cross-bk     │  │ Trained on     │  │ Live news,       │        │
-│  │ odds diff,   │  │ historical     │  │ radio, video     │        │
-│  │ arb, value   │  │ odds patterns  │  │ processing       │        │
-│  └──────┬───────┘  └───────┬────────┘  └────────┬─────────┘        │
-│         │                  │                     │                   │
-│         └──────────────────┼─────────────────────┘                   │
-│                            │                                         │
-│              ┌─────────────┴──────────────┐                          │
-│              │   Signal Bus (Redis/NATS)  │                          │
-│              │   pub/sub, typed messages  │                          │
-│              └─────────────┬──────────────┘                          │
-└────────────────────────────┼─────────────────────────────────────────┘
+│  [Scraper x N]  ──dual──►  match_database/<sport>/<bk>/<date>/*.csv │
+│  (per bookmaker,   write    (append-only, audit trail)              │
+│   per sport,                                                       │
+│   isolated VPN)       │                                            │
+│                        └──XADD──► Redis Stream "odds:<bk>"         │
+│                                  (MAXLEN 10000, ~3h window)        │
+└───────────────────────────────┬─────────────────────────────────────┘
+                                │
+┌───────────────────────────────┼─────────────────────────────────────┐
+│                    REAL-TIME CONSUMERS                               │
+│                               │                                     │
+│  ┌──────────────┐  ┌──────────┴───┐  ┌──────────────────┐         │
+│  │ Comparator   │  │  ML Signal   │  │  Dashboard       │         │
+│  │ Signal       │  │  Provider    │  │  (live odds,     │         │
+│  │ Provider     │  │  (future)    │  │   <50ms latency) │         │
+│  │ (XREAD)      │  │              │  │                  │         │
+│  └──────┬───────┘  └───────┬──────┘  └──────────────────┘         │
+│         │                  │                                        │
+│         └──────────────────┼─────────────────────┐                  │
+│                            │                     │                  │
+│              ┌─────────────┴──────────────┐      │                  │
+│              │  Signal Bus (Redis pub/sub)│      │                  │
+│              │  "signals:all" channel     │      │                  │
+│              └─────────────┬──────────────┘      │                  │
+└────────────────────────────┼─────────────────────┼──────────────────┘
+                             │                     │
                              │
 ┌────────────────────────────┼─────────────────────────────────────────┐
 │                     DECISION LAYER                                    │

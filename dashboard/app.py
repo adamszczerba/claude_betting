@@ -286,6 +286,19 @@ def _kpi(label: str, value: str, color: str = "#00d4ff") -> html.Div:
     )
 
 
+def _fetch_odds_rows():
+    """Fetch odds rows from Redis streams, falling back to CSV scan."""
+    try:
+        from scrapers.shared.stream_consumer import read_latest_from_streams, is_redis_available
+        if is_redis_available():
+            rows = read_latest_from_streams()
+            if rows:
+                return rows
+    except Exception:
+        pass
+    return scan_today(db_root=DB_ROOT)
+
+
 def _build_snapshot(n_intervals: int = 0):
     """Build a full dashboard snapshot for layout init and periodic refresh."""
     now = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
@@ -328,8 +341,8 @@ def _build_snapshot(n_intervals: int = 0):
         )
         log_panels.append(panel)
 
-    # Odds table
-    all_rows = scan_today(db_root=DB_ROOT)
+    # Odds table — try Redis streams first, fall back to CSV scan
+    all_rows = _fetch_odds_rows()
     grouped = build_grouped_table(all_rows)
     try:
         odds_content = _build_odds_html(grouped) if grouped else html.Div(
