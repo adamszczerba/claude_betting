@@ -224,7 +224,7 @@ def _import_modules():
 # ---------------------------------------------------------------------------
 
 def _poll_loop(ledger: "Ledger", risk: "RiskManager", router: "SignalRouter") -> None:
-    from v2_coincasino.sync_clock import sleep_until_next_tick
+    from scrapers.v2_coincasino.sync_clock import sleep_until_next_tick
 
     log.info("Poll loop started (interval=%.1fs, db_root=%s)", POLL_INTERVAL, DB_ROOT)
 
