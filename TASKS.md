@@ -1,5 +1,9 @@
 # Task scheduled for agent to be done.
 
+> **The full backlog lives in [`tasks/`](tasks/README.md)** — one `.md` per task, filename
+> prefixed `easy-` / `medium-` / `hard-`. Start there when asked what is listed or remaining.
+> Background research behind that backlog: [`research/`](research/).
+
 1. explore what is the best way to store data from bookmakers to be memory efficient, good for ml training and available for decision making in real time.
 2. how scraper communicate with signal provider
 3. how decision maker communicate with signal provider
