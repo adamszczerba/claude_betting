@@ -41,6 +41,11 @@ import threading
 import time
 from typing import Any, Dict, List, Optional
 
+try:  # module-level so FastAPI can resolve the string annotation (__future__ annotations)
+    from fastapi import Request
+except ImportError:
+    Request = None  # type: ignore[assignment,misc]
+
 # ---------------------------------------------------------------------------
 # Make project root importable regardless of working directory
 # ---------------------------------------------------------------------------

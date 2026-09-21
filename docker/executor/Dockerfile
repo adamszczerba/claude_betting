@@ -55,8 +55,9 @@ COPY execution/        /app/execution/
 COPY dashboard/matcher.py        /app/dashboard/matcher.py
 COPY dashboard/data_service.py   /app/dashboard/data_service.py
 COPY dashboard/__init__.py       /app/dashboard/__init__.py
-COPY v2_coincasino/sync_clock.py /app/v2_coincasino/sync_clock.py
-COPY v2_coincasino/__init__.py   /app/v2_coincasino/__init__.py
+COPY scrapers/v2_coincasino/sync_clock.py /app/scrapers/v2_coincasino/sync_clock.py
+COPY scrapers/__init__.py /app/scrapers/__init__.py
+COPY scrapers/v2_coincasino/__init__.py   /app/scrapers/v2_coincasino/__init__.py
 
 RUN mkdir -p /app/ledger
 

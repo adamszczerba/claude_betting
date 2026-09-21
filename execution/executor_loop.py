@@ -52,7 +52,7 @@ def _build_executor():
 
 def main() -> None:
     from ledger.ledger import Ledger
-    from scrapers.v2_coincasino import sleep_until_next_tick
+    from scrapers.v2_coincasino.sync_clock import sleep_until_next_tick
 
     ledger   = Ledger(LEDGER_PATH)
     executor = _build_executor()

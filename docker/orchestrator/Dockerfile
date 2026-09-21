@@ -23,8 +23,9 @@ COPY orchestrator/    /app/orchestrator/
 COPY signals/         /app/signals/
 COPY dashboard/       /app/dashboard/
 COPY scrapers/shared/ /app/scrapers/shared/
-COPY scrapers/v2_coincasino/sync_clock.py /app/v2_coincasino/sync_clock.py
-COPY scrapers/v2_coincasino/__init__.py   /app/v2_coincasino/__init__.py
+COPY scrapers/v2_coincasino/sync_clock.py /app/scrapers/v2_coincasino/sync_clock.py
+COPY scrapers/__init__.py /app/scrapers/__init__.py
+COPY scrapers/v2_coincasino/__init__.py   /app/scrapers/v2_coincasino/__init__.py
 
 RUN mkdir -p /app/ledger /app/match_database
 

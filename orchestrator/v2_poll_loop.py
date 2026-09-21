@@ -94,7 +94,7 @@ class OrchestratorV2:
 
     def start(self, interval: float = 2.0) -> None:
         """Start background poll loop."""
-        from scrapers.v2_coincasino import sleep_until_next_tick
+        from scrapers.v2_coincasino.sync_clock import sleep_until_next_tick
 
         def _loop():
             while True:
